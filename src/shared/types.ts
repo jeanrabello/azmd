@@ -105,6 +105,15 @@ export interface FailedRun extends WorkflowRun {
   readonly portalUrlIsFallback: boolean
   /** Link para a lista de runs do workflow — usado na tela de detalhes. */
   readonly workflowPortalUrl: string
+  /**
+   * Logic App ao qual o run pertence.
+   *
+   * Redundante com a hierarquia, mas necessário: a notificação nativa é
+   * disparada fora da UI e precisa dizer *onde* falhou — com vários Logic
+   * Apps, 'notifica-cliente' sozinho é ambíguo entre prd e dev.
+   */
+  readonly logicAppId: string
+  readonly logicAppName: string
 }
 
 /**
@@ -141,6 +150,86 @@ export const RECENT_RUNS_LIMIT = 5
 // Escopo e configuração
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Hierarquia: Logic App -> workflow -> runs
+// ---------------------------------------------------------------------------
+
+/**
+ * Um "Logic App" na visão do app — o nível que agrupa workflows.
+ *
+ * O Azure não tem um conceito único aqui, e é por isso que este tipo existe:
+ *
+ *  - Standard: o grupo é o App Service (`Microsoft.Web/sites`), e os workflows
+ *    vivem literalmente dentro dele. Agrupamento natural.
+ *  - Consumption: cada workflow é um recurso independente, sem pai. Agrupamos
+ *    por resource group, que é como o portal organiza e como as pessoas
+ *    costumam separar ambiente/time (prd, dev, financeiro).
+ *
+ * `id` é sintético e estável — ver `makeLogicAppId`. Não é um resource ID do
+ * Azure, e não deve ser usado como tal.
+ */
+export interface LogicAppGroup {
+  readonly id: string
+  /** Nome exibido: nome do site (Standard) ou do resource group (Consumption). */
+  readonly name: string
+  readonly kind: WorkflowKind
+  readonly subscriptionId: string
+  readonly resourceGroup: string
+  /** Só em Standard: o App Service que hospeda os workflows. */
+  readonly siteName?: string
+  /** Resource ID do site, para o deep link. Só em Standard. */
+  readonly siteResourceId?: string
+}
+
+/**
+ * Chave estável de um grupo.
+ *
+ * Standard usa o resource ID do site; Consumption usa subscription +
+ * resource group. Prefixado por kind para que um site e um resource group de
+ * mesmo nome nunca colidam.
+ */
+export function makeLogicAppId(params: {
+  readonly kind: WorkflowKind
+  readonly subscriptionId: string
+  readonly resourceGroup: string
+  readonly siteResourceId?: string
+}): string {
+  return params.kind === 'standard' && params.siteResourceId
+    ? `standard:${params.siteResourceId}`
+    : `consumption:${params.subscriptionId}/${params.resourceGroup}`
+}
+
+/** Estado de saúde de um grupo ou workflow, para o indicador na lista. */
+export type HealthStatus = 'failing' | 'healthy' | 'unwatched'
+
+/** Um Logic App com o resumo do que está acontecendo dentro dele. */
+export interface LogicAppSummary {
+  readonly group: LogicAppGroup
+  readonly health: HealthStatus
+  /** Workflows com pelo menos uma falha na janela. */
+  readonly failingWorkflowCount: number
+  readonly totalWorkflowCount: number
+  /** Total de runs falhos somando todos os workflows do grupo. */
+  readonly failedRunCount: number
+  /** Falha mais recente do grupo, em ISO. Ausente se não há falha. */
+  readonly lastFailureAt?: string
+  readonly watched: boolean
+}
+
+/** Um workflow dentro de um Logic App, com o resumo das suas falhas. */
+export interface WorkflowSummary {
+  readonly resourceId: string
+  readonly name: string
+  readonly kind: WorkflowKind
+  readonly logicAppId: string
+  readonly health: HealthStatus
+  readonly failedRunCount: number
+  readonly lastFailureAt?: string
+  readonly watched: boolean
+  /** Link para a lista de runs do workflow no portal. */
+  readonly portalUrl: string
+}
+
 /** Filtro de onde procurar workflows. Listas vazias significam "tudo". */
 export interface Scope {
   readonly subscriptionIds: readonly string[]
@@ -155,6 +244,29 @@ export const EMPTY_SCOPE: Scope = {
   workflowResourceIds: [],
 }
 
+/**
+ * Quais Logic Apps o usuário quer observar.
+ *
+ * Modelado como opt-out e não opt-in: por padrão tudo é observado, e a lista
+ * guarda só o que foi *ignorado*. O motivo é que um Logic App novo aparecendo
+ * no Azure deve ser monitorado sem exigir ação — o contrário faria o app
+ * silenciosamente deixar de avisar sobre coisas que ainda não existiam quando
+ * a seleção foi feita, que é o pior modo de falhar para um monitor.
+ *
+ * `ignoredLogicAppIds` usa as chaves de `makeLogicAppId`; ignorar um grupo
+ * ignora todos os workflows dentro dele. `ignoredWorkflowResourceIds` permite
+ * silenciar um workflow específico sem largar o grupo inteiro.
+ */
+export interface WatchSelection {
+  readonly ignoredLogicAppIds: readonly string[]
+  readonly ignoredWorkflowResourceIds: readonly string[]
+}
+
+export const EMPTY_WATCH_SELECTION: WatchSelection = {
+  ignoredLogicAppIds: [],
+  ignoredWorkflowResourceIds: [],
+}
+
 /** De onde vêm os dados. É o toggle central real <-> demo. */
 export type DataSourceMode = 'azure' | 'demo'
 
@@ -166,6 +278,8 @@ export interface Settings {
   /** Janela de retrospecto ao buscar runs, em horas. */
   readonly lookbackHours: number
   readonly scope: Scope
+  /** O que o usuário escolheu não observar. Ver WatchSelection. */
+  readonly watch: WatchSelection
   readonly notificationsEnabled: boolean
   readonly launchAtLogin: boolean
   /** Tenant usado ao montar URLs do portal. Opcional — o portal resolve sem ele. */
@@ -180,6 +294,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pollIntervalSeconds: 45,
   lookbackHours: 24,
   scope: EMPTY_SCOPE,
+  watch: EMPTY_WATCH_SELECTION,
   notificationsEnabled: true,
   launchAtLogin: false,
 }
@@ -215,7 +330,12 @@ export interface AppError {
 
 /** Snapshot completo enviado ao renderer a cada atualização. */
 export interface AppState {
+  /** Runs falhos dos workflows observados, mais recente primeiro. */
   readonly runs: readonly FailedRun[]
+  /** Logic Apps conhecidos — inclusive os ignorados, para poder reativá-los. */
+  readonly logicApps: readonly LogicAppSummary[]
+  /** Workflows conhecidos, indexáveis por logicAppId. */
+  readonly workflows: readonly WorkflowSummary[]
   readonly connection: ConnectionState
   readonly settings: Settings
 }
@@ -235,6 +355,14 @@ export interface RunbarAPI {
   refreshNow(): Promise<void>
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Settings>): Promise<Settings>
+  /** Liga/desliga o monitoramento de um Logic App inteiro. */
+  setLogicAppWatched(logicAppId: string, watched: boolean): Promise<void>
+  /** Liga/desliga o monitoramento de um workflow específico. */
+  setWorkflowWatched(workflowResourceId: string, watched: boolean): Promise<void>
+  /** Abre no portal o App Service (Standard) ou o resource group (Consumption). */
+  openLogicAppInPortal(logicAppId: string): Promise<void>
+  /** Abre a lista de runs de um workflow no portal. */
+  openWorkflowResourceInPortal(workflowResourceId: string): Promise<void>
   dismissRun(runId: string): Promise<void>
   dismissAll(): Promise<void>
   quit(): Promise<void>
@@ -250,6 +378,10 @@ export const IPC = {
   refreshNow: 'runbar:refresh-now',
   getSettings: 'runbar:get-settings',
   updateSettings: 'runbar:update-settings',
+  setLogicAppWatched: 'runbar:set-logic-app-watched',
+  setWorkflowWatched: 'runbar:set-workflow-watched',
+  openLogicAppInPortal: 'runbar:open-logic-app-in-portal',
+  openWorkflowResourceInPortal: 'runbar:open-workflow-resource-in-portal',
   dismissRun: 'runbar:dismiss-run',
   dismissAll: 'runbar:dismiss-all',
   quit: 'runbar:quit',

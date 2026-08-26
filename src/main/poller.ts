@@ -34,8 +34,25 @@ export interface PollCycleResult {
   /** Todos os runs falhos dentro da janela, incluindo os já conhecidos. */
   readonly allFailures: readonly WorkflowRun[]
   readonly workflowsPolled: number
+  /**
+   * Inventário completo descoberto, inclusive workflows não observados.
+   *
+   * A UI precisa deles para listar o que existe e permitir reativar o que foi
+   * ignorado — se só devolvêssemos os observados, não haveria caminho de volta.
+   */
+  readonly discoveredWorkflows: readonly WorkflowRef[]
   /** Erros por workflow. Um ciclo pode ter sucesso parcial. */
   readonly errors: readonly PollError[]
+}
+
+export interface PollCycleOptions {
+  /**
+   * Decide se um workflow deve ser consultado.
+   *
+   * Filtrar aqui — e não depois — é o que faz a seleção economizar quota: o
+   * workflow ignorado nunca vira chamada ao ARM.
+   */
+  readonly shouldPoll?: (workflow: WorkflowRef) => boolean
 }
 
 export interface PollError {
@@ -115,11 +132,13 @@ export class Poller {
     for (const run of runs) this.#seenRuns.set(run.runId, now)
   }
 
-  async runCycle(scope: Scope): Promise<PollCycleResult> {
+  async runCycle(scope: Scope, options: PollCycleOptions = {}): Promise<PollCycleResult> {
     this.#pruneSeen()
 
     const errors: PollError[] = []
-    const workflows = await this.#discoverWorkflows(scope, errors)
+    const discoveredWorkflows = await this.#discoverWorkflows(scope, errors)
+    const shouldPoll = options.shouldPoll ?? (() => true)
+    const workflows = discoveredWorkflows.filter(shouldPoll)
 
     const results = await Promise.all(
       workflows.map((wf) => this.#pollWorkflow(wf, errors)),
@@ -146,6 +165,7 @@ export class Poller {
       newFailures,
       allFailures: visibleFailures,
       workflowsPolled: workflows.length,
+      discoveredWorkflows,
       errors,
     }
   }

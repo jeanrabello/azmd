@@ -297,3 +297,28 @@ describe('Poller — histórico para a tela de detalhes', () => {
     expect(poller.getRecentRuns(WORKFLOW.resourceId, 5)).toHaveLength(0)
   })
 })
+
+describe('Poller — filtro de observação', () => {
+  it('não consulta workflow que o filtro rejeita', async () => {
+    const adapter = new FakeAdapter()
+    adapter.runs = [makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+
+    const result = await poller.runCycle(EMPTY_SCOPE, { shouldPoll: () => false })
+
+    // O ponto do filtro é economizar quota: nada de chamada ao ARM.
+    expect(adapter.listRunsCalls).toBe(0)
+    expect(result.allFailures).toHaveLength(0)
+  })
+
+  it('devolve o inventário completo mesmo com tudo filtrado', async () => {
+    const adapter = new FakeAdapter()
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+
+    const result = await poller.runCycle(EMPTY_SCOPE, { shouldPoll: () => false })
+
+    // A UI precisa listar o que existe para permitir reativar o ignorado.
+    expect(result.discoveredWorkflows).toHaveLength(1)
+    expect(result.workflowsPolled).toBe(0)
+  })
+})

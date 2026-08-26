@@ -45,6 +45,16 @@ export function buildRunsListUrl(workflowResourceId: string, tenantId?: string):
 }
 
 /**
+ * Blade de um recurso qualquer no portal.
+ *
+ * Usada para abrir o App Service (Standard) ou o resource group
+ * (Consumption) a partir da listagem de Logic Apps. Formato estável.
+ */
+export function buildResourceUrl(resourceId: string, tenantId?: string): string {
+  return `${PORTAL_ORIGIN}/${directoryPrefix(tenantId)}/resource${resourceId}`
+}
+
+/**
  * Consumption: o run é uma sub-resource do próprio workflow, então o resource
  * ID do run é `{workflowId}/runs/{runName}` e a blade responde a ele.
  *

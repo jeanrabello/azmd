@@ -97,6 +97,9 @@
 
 html,
 body {
+  /* Altura fixa da janela: o rodapé é ancorado na base, então o documento
+   * precisa ocupar o popover inteiro em vez de encolher com o conteúdo. */
+  height: 100%;
   margin: 0;
   padding: 0;
   /* Transparente de propósito — vibrancy: 'popover' do BrowserWindow pinta o
@@ -114,7 +117,7 @@ body {
 
 #root {
   width: 380px;
-  max-height: 520px;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -132,14 +135,15 @@ button {
 .app {
   display: flex;
   flex-direction: column;
-  max-height: 520px;
+  /* height (e não max-height): com pouco conteúdo o container encolhia e o
+   * rodapé subia junto, flutuando no meio da janela. */
+  height: 100%;
   width: 380px;
 }
 
 .app--loading {
   align-items: center;
   justify-content: center;
-  height: 200px;
 }
 
 .app-content {
@@ -413,7 +417,9 @@ button {
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--color-label-tertiary);
+  /* secondary, não tertiary: em 12px o traço fino do ícone quase some no
+   * tertiary, e o botão vira um fantasma que ninguém acha. */
+  color: var(--color-label-secondary);
   font-size: 13px;
   line-height: 1;
   cursor: default;
@@ -954,4 +960,89 @@ input[type='range'] {
 .app-content::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-label-secondary);
   background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------------------
+ * Hierarquia de navegação — Logic App -> workflow -> runs
+ *
+ * As três telas (LogicAppList, WorkflowList, WorkflowRuns) reaproveitam a
+ * geometria de `.run-row`/`.run-row__action` da lista de runs: mesma
+ * respiração de padding, mesmas ações reveladas no hover. O que muda é o
+ * indicador de saúde (`.health-dot`) no lugar do kind-badge como elemento
+ * âncora da linha, e o pill de contagem de falhas.
+ * ------------------------------------------------------------------------- */
+
+.health-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-idle);
+}
+
+.health-dot--failing {
+  background: var(--color-error);
+}
+
+.health-dot--healthy {
+  background: var(--color-success);
+}
+
+/* Ponto oco: não monitorado não é "saudável" nem "falhando", é um terceiro
+ * estado que não deve competir visualmente com os outros dois. */
+.health-dot--unwatched {
+  background: transparent;
+  border: 1.3px solid var(--color-label-tertiary);
+}
+
+/* Label esmaecido para linhas de item não monitorado — continuam clicáveis e
+ * com as ações normais, só o texto principal perde ênfase. */
+.run-row__name--dimmed {
+  opacity: 0.5;
+}
+
+.run-row__chevron {
+  flex-shrink: 0;
+  color: var(--color-label-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  margin-left: auto;
+}
+
+/* Pill vermelho de contagem de falhas, mesmo tratamento visual do
+ * status-badge--failure já usado na tela de detalhes. */
+.count-pill {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cabeçalho das telas de segundo/terceiro nível (WorkflowList, WorkflowRuns) —
+ * mesmo espaçamento do details__nav acima dele, sem repetir a borda que o
+ * bloco de título de RunDetailsPanel já usa (aqui não há badges). */
+.list-header {
+  flex-shrink: 0;
+  padding: 0 14px 8px;
+}
+
+.list-header__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-label);
+  overflow-wrap: anywhere;
+}
+
+.list-header__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

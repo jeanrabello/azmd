@@ -4,17 +4,21 @@ import { createAzureAdapters } from './azure/discovered.js'
 import { DemoAdapter, DEMO_TENANT_ID } from './azure/demo.js'
 import { createAzureCredential, probeCredential } from './auth/credential.js'
 import { Poller, classifyError } from './poller.js'
-import { buildPortalLink, buildRunsListUrl } from './portal-url.js'
+import { buildPortalLink, buildResourceUrl, buildRunsListUrl } from './portal-url.js'
+import { buildHierarchy, groupFor, isWorkflowWatched } from './grouping.js'
 import { SettingsStore } from './settings-store.js'
 import { RECENT_RUNS_LIMIT } from '../shared/types.js'
 import type {
   AppState,
   ConnectionState,
   FailedRun,
+  LogicAppSummary,
   RunDetails,
   Settings,
+  WorkflowRef,
   WorkflowRun,
   WorkflowRunSummary,
+  WorkflowSummary,
 } from '../shared/types.js'
 
 /**
@@ -37,6 +41,10 @@ export class AppController {
 
   #poller: Poller
   #runs: readonly FailedRun[] = []
+  #logicApps: readonly LogicAppSummary[] = []
+  #workflowSummaries: readonly WorkflowSummary[] = []
+  /** Inventário do último ciclo, para resolver ações vindas do renderer. */
+  #discovered: readonly WorkflowRef[] = []
   #connection: ConnectionState = { kind: 'idle' }
   #timer: NodeJS.Timeout | undefined
   /** Impede ciclos concorrentes — um refresh manual durante o automático. */
@@ -103,6 +111,8 @@ export class AppController {
   getState(): AppState {
     return {
       runs: this.#runs,
+      logicApps: this.#logicApps,
+      workflows: this.#workflowSummaries,
       connection: this.#connection,
       settings: this.#settings.get(),
     }
@@ -132,9 +142,24 @@ export class AppController {
         await this.#resolveTenant()
       }
 
-      const result = await this.#poller.runCycle(settings.scope)
+      const result = await this.#poller.runCycle(settings.scope, {
+        // Filtra antes da chamada: workflow ignorado não vira request ao ARM.
+        shouldPoll: (workflow) => isWorkflowWatched(workflow, settings.watch),
+      })
       const tenantId = settings.tenantId ?? this.#resolvedTenantId
+      // Antes de mapear os runs: #toFailedRun resolve o Logic App a partir do
+      // inventário, e com o de ontem o nome sairia vazio ou errado.
+      this.#discovered = result.discoveredWorkflows
       this.#runs = result.allFailures.map((run) => this.#toFailedRun(run, tenantId))
+
+      const hierarchy = buildHierarchy({
+        workflows: result.discoveredWorkflows,
+        failedRuns: result.allFailures,
+        watch: settings.watch,
+        portalUrlFor: (workflow) => buildRunsListUrl(workflow.resourceId, tenantId),
+      })
+      this.#logicApps = hierarchy.logicApps
+      this.#workflowSummaries = hierarchy.workflows
 
       // Um ciclo pode falhar em alguns workflows e ter sucesso em outros.
       // Só reportamos erro quando nada foi coletado — caso contrário mostrar
@@ -176,11 +201,16 @@ export class AppController {
   /** Anexa os deep links resolvidos; o renderer nunca monta URL. */
   #toFailedRun(run: WorkflowRun, tenantId: string | undefined): FailedRun {
     const link = buildPortalLink(run, tenantId)
+    const workflow = this.#discovered.find((w) => w.resourceId === run.workflowResourceId)
+    const group = workflow ? groupFor(workflow) : undefined
+
     return {
       ...run,
       portalUrl: link.url,
       portalUrlIsFallback: link.isFallback,
       workflowPortalUrl: buildRunsListUrl(run.workflowResourceId, tenantId),
+      logicAppId: group?.id ?? '',
+      logicAppName: group?.name ?? '',
     }
   }
 
@@ -237,6 +267,9 @@ export class AppController {
         lookbackHours: after.lookbackHours,
       })
       this.#runs = []
+      this.#logicApps = []
+      this.#workflowSummaries = []
+      this.#discovered = []
       this.#isFirstCycle = true
       this.#resolvedTenantId = after.mode === 'demo' ? DEMO_TENANT_ID : undefined
       this.#connection = { kind: 'connecting' }
@@ -253,6 +286,74 @@ export class AppController {
     this.#emit()
     if (after.mode !== before.mode) void this.refreshNow()
     return after
+  }
+
+  /**
+   * Liga/desliga um Logic App inteiro.
+   *
+   * Rebuilda a hierarquia na hora com o inventário que já temos, para a UI
+   * responder ao clique sem esperar o próximo ciclo de polling.
+   */
+  setLogicAppWatched(logicAppId: string, watched: boolean): void {
+    const current = this.#settings.get().watch
+    const ignored = new Set(current.ignoredLogicAppIds)
+    if (watched) ignored.delete(logicAppId)
+    else ignored.add(logicAppId)
+
+    this.#applyWatch({ ...current, ignoredLogicAppIds: [...ignored] })
+  }
+
+  setWorkflowWatched(workflowResourceId: string, watched: boolean): void {
+    const current = this.#settings.get().watch
+    const ignored = new Set(current.ignoredWorkflowResourceIds)
+    if (watched) ignored.delete(workflowResourceId)
+    else ignored.add(workflowResourceId)
+
+    this.#applyWatch({ ...current, ignoredWorkflowResourceIds: [...ignored] })
+  }
+
+  #applyWatch(watch: Settings['watch']): void {
+    const settings = this.#settings.update({ watch })
+    const tenantId = settings.tenantId ?? this.#resolvedTenantId
+
+    // Runs de workflows recém-ignorados somem da lista imediatamente.
+    const watchedIds = new Set(
+      this.#discovered
+        .filter((workflow) => isWorkflowWatched(workflow, settings.watch))
+        .map((workflow) => workflow.resourceId),
+    )
+    this.#runs = this.#runs.filter((run) => watchedIds.has(run.workflowResourceId))
+
+    const hierarchy = buildHierarchy({
+      workflows: this.#discovered,
+      failedRuns: this.#runs,
+      watch: settings.watch,
+      portalUrlFor: (workflow) => buildRunsListUrl(workflow.resourceId, tenantId),
+    })
+    this.#logicApps = hierarchy.logicApps
+    this.#workflowSummaries = hierarchy.workflows
+    this.#emit()
+
+    // Reativar exige buscar o que não foi coletado enquanto estava ignorado.
+    if (watchedIds.size > 0) void this.refreshNow()
+  }
+
+  /** URL do App Service (Standard) ou do resource group (Consumption). */
+  logicAppPortalUrl(logicAppId: string): string | undefined {
+    const summary = this.#logicApps.find((app) => app.group.id === logicAppId)
+    if (!summary) return undefined
+    const settings = this.#settings.get()
+    const tenantId = settings.tenantId ?? this.#resolvedTenantId
+
+    const { group } = summary
+    const resourceId =
+      group.siteResourceId ??
+      `/subscriptions/${group.subscriptionId}/resourceGroups/${group.resourceGroup}`
+    return buildResourceUrl(resourceId, tenantId)
+  }
+
+  workflowPortalUrl(workflowResourceId: string): string | undefined {
+    return this.#workflowSummaries.find((w) => w.resourceId === workflowResourceId)?.portalUrl
   }
 
   findRun(runId: string): FailedRun | undefined {

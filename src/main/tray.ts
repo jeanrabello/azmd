@@ -165,7 +165,14 @@ type IconStatus = 'idle' | 'alert' | 'error'
 
 function describeState(state: AppState): string {
   if (state.connection.kind === 'error') return `Runbar — ${state.connection.error.message}`
-  const count = state.runs.length
-  if (count === 0) return 'Runbar — nenhuma falha'
-  return `Runbar — ${count} ${count === 1 ? 'falha' : 'falhas'}`
+
+  const runCount = state.runs.length
+  if (runCount === 0) return 'Runbar — nenhuma falha'
+
+  // Com muitos Logic Apps, "12 falhas" não diz se é um app quebrado ou o
+  // ambiente inteiro. O número de apps afetados responde isso de relance.
+  const failingApps = state.logicApps.filter((app) => app.health === 'failing').length
+  const runs = `${runCount} ${runCount === 1 ? 'falha' : 'falhas'}`
+  if (failingApps <= 1) return `Runbar — ${runs}`
+  return `Runbar — ${runs} em ${failingApps} Logic Apps`
 }

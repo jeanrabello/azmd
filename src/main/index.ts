@@ -84,6 +84,24 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
 
   ipcMain.handle(IPC.getRunDetails, (_event, runId: string) => ctrl.getRunDetails(runId))
 
+  ipcMain.handle(IPC.setLogicAppWatched, (_event, logicAppId: string, watched: boolean) => {
+    ctrl.setLogicAppWatched(logicAppId, watched)
+  })
+
+  ipcMain.handle(IPC.setWorkflowWatched, (_event, resourceId: string, watched: boolean) => {
+    ctrl.setWorkflowWatched(resourceId, watched)
+  })
+
+  ipcMain.handle(IPC.openLogicAppInPortal, async (_event, logicAppId: string) => {
+    const url = ctrl.logicAppPortalUrl(logicAppId)
+    if (url) await openPortalUrl(url)
+  })
+
+  ipcMain.handle(IPC.openWorkflowResourceInPortal, async (_event, resourceId: string) => {
+    const url = ctrl.workflowPortalUrl(resourceId)
+    if (url) await openPortalUrl(url)
+  })
+
   ipcMain.handle(IPC.dismissRun, (_event, runId: string) => {
     ctrl.dismissRun(runId)
   })

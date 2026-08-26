@@ -8,6 +8,7 @@ import {
   type DataSourceMode,
   type Scope,
   type Settings,
+  type WatchSelection,
 } from '../shared/types.js'
 
 /**
@@ -60,6 +61,7 @@ export function sanitizeSettings(input: unknown, base: Settings = DEFAULT_SETTIN
       LOOKBACK_BOUNDS.max,
     ),
     scope: sanitizeScope(raw['scope'], base.scope),
+    watch: sanitizeWatch(raw['watch'], base.watch),
     notificationsEnabled:
       typeof raw['notificationsEnabled'] === 'boolean'
         ? raw['notificationsEnabled']
@@ -70,16 +72,31 @@ export function sanitizeSettings(input: unknown, base: Settings = DEFAULT_SETTIN
   }
 }
 
+function sanitizeWatch(input: unknown, base: WatchSelection): WatchSelection {
+  if (typeof input !== 'object' || input === null) return base
+  const raw = input as Record<string, unknown>
+  return {
+    ignoredLogicAppIds: stringList(raw['ignoredLogicAppIds'], base.ignoredLogicAppIds),
+    ignoredWorkflowResourceIds: stringList(
+      raw['ignoredWorkflowResourceIds'],
+      base.ignoredWorkflowResourceIds,
+    ),
+  }
+}
+
+/** Mantém só strings: o arquivo pode ter sido editado à mão. */
+function stringList(value: unknown, fallback: readonly string[]): readonly string[] {
+  if (!Array.isArray(value)) return fallback
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 function sanitizeScope(input: unknown, base: Scope): Scope {
   if (typeof input !== 'object' || input === null) return base
   const raw = input as Record<string, unknown>
-  const strings = (value: unknown, fallback: readonly string[]): readonly string[] =>
-    Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : fallback
-
   return {
-    subscriptionIds: strings(raw['subscriptionIds'], base.subscriptionIds),
-    resourceGroups: strings(raw['resourceGroups'], base.resourceGroups),
-    workflowResourceIds: strings(raw['workflowResourceIds'], base.workflowResourceIds),
+    subscriptionIds: stringList(raw['subscriptionIds'], base.subscriptionIds),
+    resourceGroups: stringList(raw['resourceGroups'], base.resourceGroups),
+    workflowResourceIds: stringList(raw['workflowResourceIds'], base.workflowResourceIds),
   }
 }
 

@@ -37,6 +37,14 @@ const api: RunbarAPI = {
   refreshNow: () => ipcRenderer.invoke(IPC.refreshNow) as Promise<void>,
   getSettings: () => ipcRenderer.invoke(IPC.getSettings) as Promise<Settings>,
   updateSettings: (patch) => ipcRenderer.invoke(IPC.updateSettings, patch) as Promise<Settings>,
+  setLogicAppWatched: (logicAppId, watched) =>
+    ipcRenderer.invoke(IPC.setLogicAppWatched, logicAppId, watched) as Promise<void>,
+  setWorkflowWatched: (workflowResourceId, watched) =>
+    ipcRenderer.invoke(IPC.setWorkflowWatched, workflowResourceId, watched) as Promise<void>,
+  openLogicAppInPortal: (logicAppId) =>
+    ipcRenderer.invoke(IPC.openLogicAppInPortal, logicAppId) as Promise<void>,
+  openWorkflowResourceInPortal: (workflowResourceId) =>
+    ipcRenderer.invoke(IPC.openWorkflowResourceInPortal, workflowResourceId) as Promise<void>,
   dismissRun: (runId) => ipcRenderer.invoke(IPC.dismissRun, runId) as Promise<void>,
   dismissAll: () => ipcRenderer.invoke(IPC.dismissAll) as Promise<void>,
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,

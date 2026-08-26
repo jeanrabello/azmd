@@ -31,9 +31,23 @@ O toggle fica em **⚙︎ → Fonte de dados**, e é o mecanismo que permite rod
 
 A troca é total: modo demo não instancia SDK do Azure, e nada além de `AppController.#buildAdapters` sabe que existem dois modos. Poller, dedupe, notificação, IPC e UI são idênticos nos dois casos — é o que garante que o que você testa em demo é o mesmo código que roda em produção.
 
+## Navegação
+
+A tela inicial lista **Logic Apps**, não runs — com dezenas de workflows, uma lista plana de falhas não diz onde está o problema. Cada linha mostra saúde (verde/vermelho), quantos workflows estão falhando, o total de runs falhos e quando foi a última falha. Falhando primeiro, ignorados por último.
+
+```
+Logic Apps  →  workflows do app  →  runs falhos  →  detalhe do run
+```
+
+**Agrupamento.** O Azure não tem um conceito único de "Logic App" que sirva aos dois sabores: no Standard o grupo é o App Service, e os workflows vivem dentro dele; no Consumption cada workflow é um recurso independente, sem pai — esses são agrupados por **resource group**, que é como o portal organiza e como ambientes costumam ser separados (prd, dev, financeiro).
+
+**Escolher o que observar.** O ícone de olho em cada linha liga/desliga o monitoramento, tanto de um Logic App inteiro quanto de um workflow específico. O que não é observado não notifica, não aparece na contagem e **não é consultado** — o poller filtra antes da chamada, então ignorar economiza quota do ARM.
+
+A seleção é *opt-out*: por padrão tudo é monitorado, e o que se guarda é a lista do que foi ignorado. É deliberado — um Logic App novo aparecendo no Azure deve ser monitorado sem exigir ação. O contrário faria o app silenciosamente deixar de avisar sobre coisas que não existiam quando a seleção foi feita, que é o pior modo de falhar para um monitor. Itens ignorados continuam visíveis na lista (marcados "Não monitorado") para poderem ser reativados.
+
 ## Interação
 
-**Listagem** — clicar na linha abre a tela de detalhes. Abrir no portal virou um botão explícito (ícone de link externo, aparece no hover), ao lado do descartar. A troca é deliberada: a mensagem de erro na lista vem truncada em uma linha, e mandar o usuário ao navegador só para ler o motivo era um caminho longo demais.
+**Listagem de runs** — clicar na linha abre a tela de detalhes. Abrir no portal virou um botão explícito (ícone de link externo, aparece no hover), ao lado do descartar. A troca é deliberada: a mensagem de erro na lista vem truncada em uma linha, e mandar o usuário ao navegador só para ler o motivo era um caminho longo demais.
 
 **Detalhes** — mensagem de erro completa (sem truncar), código do erro, horários, duração, run name e correlation ID. Quando o Azure devolve um payload que a normalização não cobre, um "Ver retorno do Azure" mostra o JSON cru.
 

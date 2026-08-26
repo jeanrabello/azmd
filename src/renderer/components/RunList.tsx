@@ -4,9 +4,20 @@ import { formatRelativeTime } from '../lib/time.js'
 interface RunListProps {
   readonly runs: readonly FailedRun[]
   readonly onSelectRun: (runId: string) => void
+  /**
+   * Esconde nome do workflow e badge de tipo.
+   *
+   * Usado quando a lista já está dentro de um workflow: repetir o mesmo nome
+   * em toda linha rouba espaço da mensagem de erro, que é o que importa ali.
+   */
+  readonly hideWorkflowName?: boolean
 }
 
-export default function RunList({ runs, onSelectRun }: RunListProps): React.JSX.Element {
+export default function RunList({
+  runs,
+  onSelectRun,
+  hideWorkflowName = false,
+}: RunListProps): React.JSX.Element {
   // Mais recente primeiro — startTime é ISO, comparação por string não
   // funciona de forma confiável entre fusos, então parseia.
   const sorted = [...runs].sort(
@@ -16,7 +27,12 @@ export default function RunList({ runs, onSelectRun }: RunListProps): React.JSX.
   return (
     <ul className="run-list">
       {sorted.map((run) => (
-        <RunRow key={run.runId} run={run} onSelect={onSelectRun} />
+        <RunRow
+          key={run.runId}
+          run={run}
+          onSelect={onSelectRun}
+          hideWorkflowName={hideWorkflowName}
+        />
       ))}
     </ul>
   )
@@ -25,9 +41,11 @@ export default function RunList({ runs, onSelectRun }: RunListProps): React.JSX.
 function RunRow({
   run,
   onSelect,
+  hideWorkflowName,
 }: {
   readonly run: FailedRun
   readonly onSelect: (runId: string) => void
+  readonly hideWorkflowName: boolean
 }): React.JSX.Element {
   /**
    * Clicar na linha abre os detalhes, não o portal.
@@ -62,12 +80,14 @@ function RunRow({
         onClick={handleOpenDetails}
         aria-label={`Ver detalhes da falha de ${run.workflowName}`}
       >
-        <div className="run-row__top">
-          <span className="run-row__name">{run.workflowName}</span>
-          <span className={`kind-badge kind-badge--${run.kind}`}>
-            {run.kind === 'consumption' ? 'Consumption' : 'Standard'}
-          </span>
-        </div>
+        {!hideWorkflowName && (
+          <div className="run-row__top">
+            <span className="run-row__name">{run.workflowName}</span>
+            <span className={`kind-badge kind-badge--${run.kind}`}>
+              {run.kind === 'consumption' ? 'Consumption' : 'Standard'}
+            </span>
+          </div>
+        )}
         <div className="run-row__bottom">
           <span className="run-row__error" title={run.error?.message}>
             {run.error?.message ?? 'Falha sem mensagem detalhada'}

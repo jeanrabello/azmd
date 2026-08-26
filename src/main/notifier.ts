@@ -55,6 +55,9 @@ export class Notifier {
   #notifyOne(run: FailedRun): void {
     const notification = new Notification({
       title: `${run.workflowName} falhou`,
+      // Com muitos Logic Apps, o nome do workflow sozinho é ambíguo: o mesmo
+      // 'notifica-cliente' existe em prd e dev. O subtítulo diz onde foi.
+      subtitle: run.logicAppName,
       body: run.error?.message ?? 'Run terminou com status Failed',
       silent: false,
     })
@@ -63,9 +66,14 @@ export class Notifier {
   }
 
   #notifySummary(runs: readonly FailedRun[]): void {
+    const apps = [...new Set(runs.map((r) => r.logicAppName).filter(Boolean))]
     const names = [...new Set(runs.map((r) => r.workflowName))]
     const subject =
-      names.length === 1 ? names[0] : `${names.length} workflows`
+      apps.length === 1 && apps[0]
+        ? apps[0]
+        : names.length === 1
+          ? names[0]
+          : `${names.length} workflows`
     const notification = new Notification({
       title: `${runs.length} runs falharam`,
       body: `Em ${subject}. Abra o Runbar para ver a lista.`,

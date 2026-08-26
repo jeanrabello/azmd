@@ -29,49 +29,66 @@ function standardId(rg: string, site: string, workflow: string): string {
   return `/subscriptions/${DEMO_SUBSCRIPTION}/resourceGroups/${rg}/providers/Microsoft.Web/sites/${site}/workflows/${workflow}`
 }
 
+/**
+ * Inventário de demonstração.
+ *
+ * Deliberadamente grande — 5 Logic Apps e 21 workflows, com Consumption em
+ * três resource groups e dois App Services Standard. Um inventário pequeno
+ * esconde exatamente o problema que a hierarquia resolve: com poucos itens,
+ * qualquer listagem plana parece boa.
+ */
+function consumptionGroup(rg: string, names: readonly string[]): WorkflowRef[] {
+  return names.map((name) => ({
+    resourceId: consumptionId(rg, name),
+    name,
+    kind: 'consumption' as const,
+    subscriptionId: DEMO_SUBSCRIPTION,
+    resourceGroup: rg,
+    location: 'brazilsouth',
+  }))
+}
+
+function standardGroup(rg: string, site: string, names: readonly string[]): WorkflowRef[] {
+  return names.map((name) => ({
+    resourceId: standardId(rg, site, name),
+    name,
+    kind: 'standard' as const,
+    subscriptionId: DEMO_SUBSCRIPTION,
+    resourceGroup: rg,
+    location: 'brazilsouth',
+    siteName: site,
+  }))
+}
+
 const DEMO_WORKFLOWS: readonly WorkflowRef[] = [
-  {
-    resourceId: consumptionId('rg-integracoes', 'processa-pedidos'),
-    name: 'processa-pedidos',
-    kind: 'consumption',
-    subscriptionId: DEMO_SUBSCRIPTION,
-    resourceGroup: 'rg-integracoes',
-    location: 'brazilsouth',
-  },
-  {
-    resourceId: consumptionId('rg-integracoes', 'sincroniza-estoque'),
-    name: 'sincroniza-estoque',
-    kind: 'consumption',
-    subscriptionId: DEMO_SUBSCRIPTION,
-    resourceGroup: 'rg-integracoes',
-    location: 'brazilsouth',
-  },
-  {
-    resourceId: consumptionId('rg-financeiro', 'concilia-pagamentos'),
-    name: 'concilia-pagamentos',
-    kind: 'consumption',
-    subscriptionId: DEMO_SUBSCRIPTION,
-    resourceGroup: 'rg-financeiro',
-    location: 'eastus',
-  },
-  {
-    resourceId: standardId('rg-plataforma', 'la-plataforma-prd', 'notifica-cliente'),
-    name: 'notifica-cliente',
-    kind: 'standard',
-    subscriptionId: DEMO_SUBSCRIPTION,
-    resourceGroup: 'rg-plataforma',
-    location: 'brazilsouth',
-    siteName: 'la-plataforma-prd',
-  },
-  {
-    resourceId: standardId('rg-plataforma', 'la-plataforma-prd', 'exporta-relatorio'),
-    name: 'exporta-relatorio',
-    kind: 'standard',
-    subscriptionId: DEMO_SUBSCRIPTION,
-    resourceGroup: 'rg-plataforma',
-    location: 'brazilsouth',
-    siteName: 'la-plataforma-prd',
-  },
+  ...consumptionGroup('rg-integracoes', [
+    'processa-pedidos',
+    'sincroniza-estoque',
+    'atualiza-catalogo',
+    'importa-nfe',
+    'reprocessa-fila',
+  ]),
+  ...consumptionGroup('rg-financeiro', [
+    'concilia-pagamentos',
+    'gera-boletos',
+    'baixa-titulos',
+    'exporta-contabil',
+  ]),
+  ...consumptionGroup('rg-legado', ['sincroniza-erp', 'espelha-cadastro']),
+  ...standardGroup('rg-plataforma', 'la-plataforma-prd', [
+    'notifica-cliente',
+    'exporta-relatorio',
+    'webhook-parceiro',
+    'agenda-coleta',
+    'valida-endereco',
+    'calcula-frete',
+  ]),
+  ...standardGroup('rg-plataforma', 'la-plataforma-dev', [
+    'notifica-cliente',
+    'exporta-relatorio',
+    'teste-integracao',
+    'sandbox-parceiro',
+  ]),
 ]
 
 /** Erros realistas de Logic Apps, para a UI ser exercitada com texto de verdade. */
@@ -165,8 +182,11 @@ export class DemoAdapter implements LogicAppAdapter {
         const minutesAgo = Math.floor(rand() * 22 * 60) + 5
         const startedAt = new Date(now - minutesAgo * 60_000)
         const durationMs = Math.floor(rand() * 90_000) + 1_500
-        // ~40% dos runs falham — o suficiente para a lista nunca ficar vazia.
-        const failed = rand() < 0.4
+        // Taxa de falha por workflow, não uniforme: alguns quebram muito,
+        // a maioria vai bem. Uma taxa única deixaria todo Logic App vermelho
+        // e a hierarquia não mostraria nada — o ponto dela é justamente
+        // separar o que precisa de atenção do que está saudável.
+        const failed = rand() < failureRateFor(wf)
         runs.push(
           this.#makeRun(wf, startedAt, durationMs, failed, Math.floor(rand() * DEMO_ERRORS.length)),
         )
@@ -187,6 +207,9 @@ export class DemoAdapter implements LogicAppAdapter {
     const currentBucket = Math.floor(now / BUCKET_MS)
     const offset = hashString(workflow.resourceId) % 5
     const runs: WorkflowRun[] = []
+
+    // Workflows saudáveis não devem começar a falhar com o passar do tempo.
+    if (failureRateFor(workflow) === 0) return []
 
     for (let back = 0; back < 3; back++) {
       const bucket = currentBucket - back
@@ -250,6 +273,25 @@ export class DemoAdapter implements LogicAppAdapter {
       },
     }
   }
+}
+
+/**
+ * Taxa de falha determinística por workflow.
+ *
+ * Derivada do hash do resource ID, então é estável entre execuções: o mesmo
+ * workflow é sempre o problemático, o que torna a demo previsível para testar
+ * a UI. `rg-legado` falha muito de propósito — todo ambiente tem um.
+ */
+function failureRateFor(wf: WorkflowRef): number {
+  // rg-legado é o caso patológico de propósito: todo ambiente tem um.
+  if (wf.resourceGroup === 'rg-legado') return 0.7
+  // rg-financeiro fica sempre saudável, para a lista ter contraste — se tudo
+  // está vermelho, a hierarquia não ajuda a priorizar nada.
+  if (wf.resourceGroup === 'rg-financeiro') return 0
+  const bucket = hashString(wf.resourceId) % 10
+  if (bucket < 6) return 0
+  if (bucket < 9) return 0.12
+  return 0.4
 }
 
 function matchesScope(wf: WorkflowRef, scope: Scope): boolean {
