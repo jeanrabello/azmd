@@ -53,19 +53,27 @@ class SharedInventory {
     const result = await this.#discovery.discover(scope)
 
     // Sites Standard precisam ser expandidos nos workflows que hospedam.
-    const standard: WorkflowRef[] = []
-    for (const site of result.sites) {
-      const siteScope: Scope = {
-        subscriptionIds: [site.subscriptionId],
-        resourceGroups: [site.resourceGroup],
-        workflowResourceIds: [],
-      }
-      try {
-        standard.push(...(await this.#standard.listWorkflows(siteScope)))
-      } catch {
-        // Um site inacessível não pode derrubar o inventário inteiro.
-      }
-    }
+    //
+    // Em paralelo de propósito: um tenant real pode ter dezenas de sites, e
+    // sequencialmente a primeira descoberta levaria dezenas de segundos.
+    // `workflowResourceIds` carrega o resource ID do SITE — é o que
+    // StandardAdapter.listWorkflows espera para montar a URL do runtime.
+    const expanded = await Promise.all(
+      result.sites.map(async (site) => {
+        const siteScope: Scope = {
+          subscriptionIds: [site.subscriptionId],
+          resourceGroups: [site.resourceGroup],
+          workflowResourceIds: [site.resourceId],
+        }
+        try {
+          return await this.#standard.listWorkflows(siteScope)
+        } catch {
+          // Um site inacessível não pode derrubar o inventário inteiro.
+          return []
+        }
+      }),
+    )
+    const standard: WorkflowRef[] = expanded.flat()
 
     const consumption = result.workflows
     this.#cache = { at: Date.now(), consumption, standard }

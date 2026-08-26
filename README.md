@@ -85,6 +85,26 @@ O renderer nunca vê credencial, SDK ou URL não validada. Recebe `AppState` pro
 
 `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP restritiva no renderer. `shell.openExternal` só aceita URLs validadas contra uma allowlist de hosts do portal. Nenhum token é gravado pelo app — hoje quem detém a credencial é o Azure CLI.
 
+## Validado contra um tenant real
+
+Testado em 26/08/2026 contra um tenant com **33 Logic Apps Standard e 298 workflows**. Descoberta completa em ~18s; 76 runs falhos encontrados, todos com mensagem de erro preenchida.
+
+Três coisas só apareceram com dado real e mudaram o código:
+
+**1. Runs de Standard não existem no ARM.** O SDK `@azure/arm-appservice` expõe `workflowRuns.list`, mas `.../sites/{site}/workflows/{wf}/runs` devolve 404. O histórico fica atrás do proxy `hostruntime`, que encaminha para o runtime do próprio App Service:
+
+```
+.../sites/{site}/hostruntime/runtime/webhooks/workflow/api/management/workflows/{wf}/runs
+```
+
+`azure/standard.ts` foi reescrito para falar HTTP direto com esse endpoint. Antes, o adapter não teria retornado run nenhum.
+
+**2. O `name` do workflow vem prefixado com o site.** A listagem do ARM devolve `"la-trux/wf-PostPayment"`, enquanto o `id` usa o nome puro (`.../workflows/wf-PostPayment`). Montar URL a partir do `name` quebra; o runtime, por sua vez, já devolve o nome limpo.
+
+**3. O deep link de run no Standard não é confiável.** O recurso do workflow existe no ARM, mas o run como sub-resource dá 404 — então não há como validar um link para a blade do run específico. O app aponta para a **lista de runs** do workflow e marca como fallback; o botão diz "Abrir runs no portal", não "Abrir run". Um link inventado que abre 404 seria pior que um clique a mais.
+
+Sobre a mensagem de erro: no tenant testado, 69 dos 76 runs falhos trazem o genérico `ActionFailed — "An action failed. No dependent actions succeeded."`. Conferimos que buscar as ações do run (`/runs/{id}/actions`) devolve a mesma mensagem genérica, então a chamada extra não ajudaria. O payload cru fica disponível em "Ver retorno do Azure".
+
 ## Ressalvas conhecidas
 
 **Deep link do run específico não foi validado contra o portal.** O plano (seção 13) pede abrir um run falho real, copiar a URL e derivar o template. Isso exige uma sessão no portal, que não estava disponível. O que existe hoje:
@@ -95,7 +115,7 @@ O renderer nunca vê credencial, SDK ou URL não validada. Recebe `AppState` pro
 
 **A extração da mensagem de erro é a parte com maior chance de precisar de ajuste.** O SDK tipa `WorkflowRun.error` como `any` e o formato varia na prática (plano, aninhado em `error.error`, com o motivo só em `details[]`, ou string solta). `azure/run-error.ts` tenta os formatos conhecidos em ordem e sempre guarda o payload cru — então mesmo se a normalização errar, o "Ver retorno do Azure" mostra o que realmente chegou. Se aparecer um formato novo, é lá que se acrescenta, e há testes cobrindo cada caso.
 
-**A camada Azure não foi exercitada contra um tenant real** — não havia credencial nesta máquina. Os caminhos de erro (sem credencial, sem permissão, throttling) foram testados; os caminhos de sucesso foram verificados por tipos e testes, não por rede. Pontos que merecem conferência no primeiro uso real estão comentados em `standard.ts` e `discovery.ts`.
+**O caminho Consumption continua sem validação real.** O tenant testado só tem Logic Apps Standard, então `consumption.ts` e o agrupamento por resource group nunca foram exercitados contra dado de verdade — seguem cobertos apenas por tipos e testes.
 
 ## Distribuição
 

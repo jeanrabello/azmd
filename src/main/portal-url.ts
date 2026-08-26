@@ -66,14 +66,23 @@ function buildConsumptionRunUrl(run: WorkflowRun, tenantId?: string): string {
 }
 
 /**
- * Standard: o workflow vive dentro de um App Service, e a blade de run usa
- * um caminho diferente. Este é o formato com menor confiança do arquivo.
+ * Standard: propositalmente cai na LISTA de runs do workflow, não no run.
  *
- * VALIDAR: confirmar contra uma URL real copiada do portal.
+ * Verificado contra um tenant real: o recurso do workflow existe no ARM
+ * (`Microsoft.Web/sites/workflows`), mas o run como sub-resource devolve 404
+ * — no Standard o histórico só existe atrás do runtime do App Service, não
+ * no plano de gerenciamento (ver azure/standard.ts).
+ *
+ * Como não dá para confirmar um deep link de run que o ARM não reconhece,
+ * mandar para a lista de runs é a escolha honesta: sempre funciona, e o run
+ * procurado está no topo. Um link inventado que abre 404 seria pior que um
+ * clique a mais.
+ *
+ * Se algum dia o formato da blade for confirmado no portal, é só trocar aqui
+ * e devolver `isFallback: false`.
  */
 function buildStandardRunUrl(run: WorkflowRun, tenantId?: string): string {
-  const runResourceId = `${run.workflowResourceId}/runs/${run.runName}`
-  return `${PORTAL_ORIGIN}/${directoryPrefix(tenantId)}/resource${runResourceId}/rundetails`
+  return buildRunsListUrl(run.workflowResourceId, tenantId)
 }
 
 /**
@@ -90,11 +99,12 @@ export function buildPortalLink(run: WorkflowRun, tenantId?: string): PortalLink
   }
 
   try {
-    const url =
-      run.kind === 'consumption'
-        ? buildConsumptionRunUrl(run, tenantId)
-        : buildStandardRunUrl(run, tenantId)
-    return { url, isFallback: false }
+    if (run.kind === 'standard') {
+      // Marcado como fallback de propósito: a UI mostra o aviso de que o
+      // link abre a lista, e o usuário não é pego de surpresa.
+      return { url: buildStandardRunUrl(run, tenantId), isFallback: true }
+    }
+    return { url: buildConsumptionRunUrl(run, tenantId), isFallback: false }
   } catch {
     return { url: listUrl, isFallback: true }
   }

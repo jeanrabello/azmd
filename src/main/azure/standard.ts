@@ -1,4 +1,3 @@
-import { WebSiteManagementClient } from '@azure/arm-appservice'
 import type { TokenCredential } from '@azure/identity'
 import type { Scope, WorkflowRef, WorkflowRun } from '../../shared/types.js'
 import type { LogicAppAdapter } from './adapter.js'
@@ -7,75 +6,143 @@ import { extractRunError } from './run-error.js'
 import { resourceGroupFromId } from './consumption.js'
 
 /**
- * Logic Apps Standard — os workflows vivem dentro de um App Service
- * (`Microsoft.Web/sites` cujo `kind` contém `workflowapp`), por isso todo
- * método aqui depende de `siteName`, diferente do Consumption onde o
- * workflow é o próprio recurso.
+ * Logic Apps Standard.
+ *
+ * ⚠️ Por que este adapter não usa o SDK `@azure/arm-appservice`
+ *
+ * O SDK expõe `webApps.listWorkflows` e `workflowRuns.list`, e a primeira
+ * versão deste arquivo os usava. Contra um tenant real os dois se mostraram
+ * inadequados:
+ *
+ *  1. O histórico de runs de um workflow Standard NÃO existe no plano de
+ *     gerenciamento do ARM. Ele fica atrás do proxy `hostruntime`, que
+ *     encaminha para o runtime do próprio App Service:
+ *
+ *       .../sites/{site}/hostruntime/runtime/webhooks/workflow/api/management
+ *         /workflows/{workflow}/runs
+ *
+ *     Chamar `.../sites/{site}/workflows/{wf}/runs` devolve 404 — verificado.
+ *
+ *  2. Na listagem do ARM, `name` vem prefixado com o site
+ *     (`"la-trux/wf-PostPayment"`), enquanto o `id` usa o nome puro
+ *     (`.../workflows/wf-PostPayment`). Usar `name` para montar URL quebra.
+ *     O runtime, por outro lado, devolve o nome já puro.
+ *
+ * Por isso falamos HTTP direto com o ARM aqui, usando o token da mesma
+ * credencial. É menos elegante que o SDK, mas é a API que de fato existe.
  */
+
+const ARM_ENDPOINT = 'https://management.azure.com'
+const ARM_SCOPE = 'https://management.azure.com/.default'
+/** Versão usada nas chamadas de runtime; validada contra um tenant real. */
+const API_VERSION = '2023-12-01'
+/** Teto de runs por workflow em um ciclo — evita puxar histórico inteiro. */
+const RUNS_PAGE_SIZE = 30
+
+/** Resposta do runtime ao listar workflows de um site. */
+interface RuntimeWorkflow {
+  readonly name?: string
+}
+
+interface RuntimeRun {
+  readonly name?: string
+  readonly properties?: {
+    readonly status?: string
+    readonly startTime?: string
+    readonly endTime?: string
+    readonly code?: string
+    readonly error?: unknown
+    readonly correlation?: { readonly clientTrackingId?: string }
+  }
+}
+
 export class StandardAdapter implements LogicAppAdapter {
   readonly id = 'standard'
 
   readonly #credential: TokenCredential
-  /** Um client por subscription — o SDK amarra a subscription no construtor. */
-  readonly #clients = new Map<string, WebSiteManagementClient>()
+  #cachedToken: { value: string; expiresAt: number } | undefined
 
   constructor(credential: TokenCredential) {
     this.#credential = credential
   }
 
-  #clientFor(subscriptionId: string): WebSiteManagementClient {
-    let client = this.#clients.get(subscriptionId)
-    if (!client) {
-      client = new WebSiteManagementClient(this.#credential, subscriptionId)
-      this.#clients.set(subscriptionId, client)
+  /** Token do ARM, reaproveitado até perto de expirar. */
+  async #token(): Promise<string> {
+    const cached = this.#cachedToken
+    // 60s de folga: um token que expira no meio do voo vira 401 inexplicável.
+    if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.value
+
+    const token = await this.#credential.getToken(ARM_SCOPE)
+    if (!token) throw new Error('Não foi possível obter token do Azure.')
+    this.#cachedToken = { value: token.token, expiresAt: token.expiresOnTimestamp }
+    return token.token
+  }
+
+  async #get(path: string): Promise<unknown> {
+    const response = await fetch(`${ARM_ENDPOINT}${path}`, {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${await this.#token()}`,
+        accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      // Preserva statusCode e o header: é o que classifyError e o backoff
+      // do poller usam para distinguir auth, permissão e throttling.
+      throw Object.assign(new Error(`ARM ${response.status}: ${body.slice(0, 300)}`), {
+        statusCode: response.status,
+        response: { headers: response.headers },
+      })
     }
-    return client
+    return response.json()
+  }
+
+  /** Caminho base do runtime de um site. */
+  #runtimeBase(workflow: Pick<WorkflowRef, 'subscriptionId' | 'resourceGroup'> & { site: string }): string {
+    return (
+      `/subscriptions/${workflow.subscriptionId}` +
+      `/resourceGroups/${workflow.resourceGroup}` +
+      `/providers/Microsoft.Web/sites/${workflow.site}` +
+      `/hostruntime/runtime/webhooks/workflow/api/management`
+    )
   }
 
   /**
-   * Listagem direta por subscription. Assim como no Consumption, a descoberta
-   * de verdade usa o Resource Graph (ver discovery.ts); este método existe
-   * para escopo já conhecido e para manter o adapter utilizável isoladamente.
+   * Workflows dentro dos sites do escopo.
+   *
+   * A descoberta de sites em si vem do Resource Graph (ver discovery.ts);
+   * este método expande um site já conhecido nos workflows que ele hospeda.
    */
   async listWorkflows(scope: Scope): Promise<WorkflowRef[]> {
     const refs: WorkflowRef[] = []
 
-    for (const subscriptionId of scope.subscriptionIds) {
-      const client = this.#clientFor(subscriptionId)
+    for (const siteResourceId of scope.workflowResourceIds) {
+      const subscriptionId = subscriptionFromId(siteResourceId)
+      const resourceGroup = resourceGroupFromId(siteResourceId)
+      const site = siteNameFromId(siteResourceId)
+      if (!subscriptionId || !resourceGroup || !site) continue
 
-      for await (const site of client.webApps.list()) {
-        if (!site.id || !site.name) continue
-        // Só sites Logic Apps Standard interessam — os demais são Function Apps,
-        // Web Apps comuns etc., que compartilham o mesmo endpoint de listagem.
-        if (!site.kind?.includes('workflowapp')) continue
+      const base = this.#runtimeBase({ subscriptionId, resourceGroup, site })
+      const payload = await this.#get(`${base}/workflows?api-version=${API_VERSION}`)
 
-        const resourceGroup = resourceGroupFromId(site.id)
-        if (!resourceGroup) continue
-        if (scope.resourceGroups.length > 0 && !scope.resourceGroups.includes(resourceGroup)) {
-          continue
-        }
+      // O runtime devolve um array cru, não um envelope { value: [...] }.
+      const items: RuntimeWorkflow[] = Array.isArray(payload)
+        ? (payload as RuntimeWorkflow[])
+        : []
 
-        // Superfície do SDK para listar workflows dentro de um site ainda não
-        // verificada contra um tenant real — se o método não existir ou mudar
-        // de forma, pulamos o site em vez de quebrar a descoberta inteira.
-        try {
-          for await (const wf of client.webApps.listWorkflows(resourceGroup, site.name)) {
-            if (!wf.id || !wf.name) continue
-            refs.push({
-              resourceId: `${site.id}/workflows/${wf.name}`,
-              name: wf.name,
-              kind: 'standard',
-              subscriptionId,
-              resourceGroup,
-              location: site.location,
-              siteName: site.name,
-            })
-          }
-        } catch {
-          // SDK surface incerta (ver comentário acima) — não derruba a
-          // descoberta dos demais sites por causa de um site problemático.
-          continue
-        }
+      for (const item of items) {
+        if (!item.name) continue
+        refs.push({
+          resourceId: `${siteResourceId}/workflows/${item.name}`,
+          name: item.name,
+          kind: 'standard',
+          subscriptionId,
+          resourceGroup,
+          location: 'unknown',
+          siteName: site,
+        })
       }
     }
     return refs
@@ -84,44 +151,52 @@ export class StandardAdapter implements LogicAppAdapter {
   async listRuns(workflow: WorkflowRef, since: Date): Promise<WorkflowRun[]> {
     if (!workflow.siteName) {
       throw new Error(
-        `StandardAdapter.listRuns: workflow '${workflow.name}' requer siteName (é um workflow Standard, hospedado num App Service).`,
+        `Workflow Standard "${workflow.name}" sem siteName — não dá para montar a chamada.`,
       )
     }
 
-    const client = this.#clientFor(workflow.subscriptionId)
+    const base = this.#runtimeBase({
+      subscriptionId: workflow.subscriptionId,
+      resourceGroup: workflow.resourceGroup,
+      site: workflow.siteName,
+    })
+
+    // O runtime aceita $filter por status no servidor — verificado. Pedimos
+    // só as falhas: é o que o app mostra, e reduz o payload drasticamente
+    // num workflow que roda milhares de vezes por dia.
+    const query =
+      `api-version=${API_VERSION}` +
+      `&$top=${RUNS_PAGE_SIZE}` +
+      `&$filter=${encodeURIComponent("status eq 'Failed'")}`
+
+    const payload = await this.#get(`${base}/workflows/${workflow.name}/runs?${query}`)
+    const items = readRunList(payload)
+    const sinceMs = since.getTime()
     const runs: WorkflowRun[] = []
 
-    // Diferente do Consumption, a API de Standard não garante filtro
-    // confiável de startTime no servidor — por isso buscamos tudo e filtramos
-    // por `since` do lado do cliente. É a diferença documentada entre os dois
-    // adapters (ver LogicAppAdapter.listRuns).
-    const iterator = client.workflowRuns.list(
-      workflow.resourceGroup,
-      workflow.siteName,
-      workflow.name,
-    )
+    for (const item of items) {
+      const props = item.properties
+      if (!item.name || !props?.startTime) continue
 
-    for await (const run of iterator) {
-      if (!run.name || !run.startTime) continue
-      const startTime = new Date(run.startTime)
-      if (startTime < since) continue
+      // O filtro de tempo é aplicado no cliente: o runtime aceita $filter por
+      // status, mas combiná-lo com startTime não é confiável entre versões.
+      const startedAt = new Date(props.startTime)
+      if (Number.isNaN(startedAt.getTime()) || startedAt.getTime() < sinceMs) continue
 
-      const error = extractRunError(run.error, run.code)
+      const error = extractRunError(props.error, props.code)
 
       runs.push({
-        runName: run.name,
-        runId: makeRunId(workflow.resourceId, run.name),
+        runName: item.name,
+        runId: makeRunId(workflow.resourceId, item.name),
         workflowResourceId: workflow.resourceId,
         workflowName: workflow.name,
         kind: 'standard',
-        status: normalizeStatus(run.status),
-        startTime: startTime.toISOString(),
-        ...(run.endTime ? { endTime: new Date(run.endTime).toISOString() } : {}),
-        ...(error
-          ? { error }
-          : {}),
-        ...(run.correlation?.clientTrackingId
-          ? { correlationId: run.correlation.clientTrackingId }
+        status: normalizeStatus(props.status),
+        startTime: startedAt.toISOString(),
+        ...(props.endTime ? { endTime: new Date(props.endTime).toISOString() } : {}),
+        ...(error ? { error } : {}),
+        ...(props.correlation?.clientTrackingId
+          ? { correlationId: props.correlation.clientTrackingId }
           : {}),
       })
     }
@@ -129,3 +204,20 @@ export class StandardAdapter implements LogicAppAdapter {
   }
 }
 
+/** Runs vêm em `{ value: [...] }`; toleramos array cru por segurança. */
+function readRunList(payload: unknown): RuntimeRun[] {
+  if (Array.isArray(payload)) return payload as RuntimeRun[]
+  if (typeof payload === 'object' && payload !== null) {
+    const value = (payload as { value?: unknown }).value
+    if (Array.isArray(value)) return value as RuntimeRun[]
+  }
+  return []
+}
+
+export function subscriptionFromId(resourceId: string): string | undefined {
+  return /\/subscriptions\/([^/]+)/i.exec(resourceId)?.[1]
+}
+
+export function siteNameFromId(resourceId: string): string | undefined {
+  return /\/providers\/Microsoft\.Web\/sites\/([^/]+)/i.exec(resourceId)?.[1]
+}

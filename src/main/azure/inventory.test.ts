@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ConsumptionAdapter } from './consumption.js'
-import { StandardAdapter } from './standard.js'
+import { StandardAdapter, siteNameFromId, subscriptionFromId } from './standard.js'
 import { EMPTY_SCOPE } from '../../shared/types.js'
 import type { TokenCredential } from '@azure/identity'
 
@@ -31,6 +31,8 @@ describe('adapters crus com escopo vazio', () => {
   })
 
   it('StandardAdapter devolve vazio sem chamar o Azure', async () => {
+    // Agora o motivo é outro: listWorkflows itera scope.workflowResourceIds
+    // (que carrega os resource IDs dos SITES). Vazio => nenhuma chamada.
     const adapter = new StandardAdapter(credential)
     await expect(adapter.listWorkflows(EMPTY_SCOPE)).resolves.toEqual([])
   })
@@ -50,5 +52,24 @@ describe('adapters crus com escopo vazio', () => {
         new Date(),
       ),
     ).rejects.toThrow(/siteName/i)
+  })
+})
+
+describe('parsing de resource ID do Standard', () => {
+  // Formatos observados num tenant real.
+  const SITE_ID =
+    '/subscriptions/dd4b9b4c-6ab5-4fa2-bcbd-59c08df49850/resourceGroups/rg-LRSDataLink-shared/providers/Microsoft.Web/sites/la-adevops'
+
+  it('extrai subscription, resource group e nome do site', () => {
+    expect(subscriptionFromId(SITE_ID)).toBe('dd4b9b4c-6ab5-4fa2-bcbd-59c08df49850')
+    expect(siteNameFromId(SITE_ID)).toBe('la-adevops')
+  })
+
+  it('extrai o site também a partir do ID de um workflow', () => {
+    expect(siteNameFromId(`${SITE_ID}/workflows/wf-SyncFeature-MondayToADO`)).toBe('la-adevops')
+  })
+
+  it('devolve undefined para ID que não é de site', () => {
+    expect(siteNameFromId('/subscriptions/x/resourceGroups/y')).toBeUndefined()
   })
 })

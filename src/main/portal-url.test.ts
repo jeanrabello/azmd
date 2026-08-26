@@ -37,6 +37,16 @@ describe('buildPortalLink', () => {
       expect(isAllowedPortalUrl(link.url)).toBe(true)
     }
   })
+
+  // Verificado contra um tenant real: no Standard o run não existe como
+  // recurso no ARM (404), só atrás do runtime do App Service. Então apontamos
+  // para a lista de runs e avisamos a UI, em vez de arriscar um link quebrado.
+  it('Standard aponta para a lista de runs e se declara fallback', () => {
+    const link = buildPortalLink({ ...CONSUMPTION_RUN, kind: 'standard' }, 'tenant-123')
+    expect(link.isFallback).toBe(true)
+    expect(link.url.endsWith('/runs')).toBe(true)
+    expect(link.url).not.toContain('/rundetails')
+  })
 })
 
 describe('buildRunsListUrl', () => {

@@ -100,7 +100,9 @@ export default function RunDetailsPanel({
             <Fact label="Fim" value={run.endTime ? formatAbsolute(run.endTime) : '—'} />
             <Fact label="Duração" value={formatDuration(durationMs)} />
             <Fact label="Run" value={run.runName} mono />
-            {run.correlationId !== undefined && (
+            {/* No Standard o clientTrackingId costuma ser igual ao nome do run;
+                repetir o mesmo valor em duas linhas só ocupa espaço. */}
+            {run.correlationId !== undefined && run.correlationId !== run.runName && (
               <Fact label="Correlation" value={run.correlationId} mono />
             )}
           </dl>
@@ -125,8 +127,15 @@ export default function RunDetailsPanel({
           type="button"
           className="details__action details__action--primary"
           onClick={() => void window.runbar.openRunInPortal(run.runId)}
+          title={
+            run.portalUrlIsFallback
+              ? 'O portal não expõe link direto para este run — abre a lista, com ele no topo'
+              : undefined
+          }
         >
-          Abrir run no portal
+          {/* No Standard o link cai na lista de runs; prometer "este run" e
+              entregar a lista seria mentir para o usuário. */}
+          {run.portalUrlIsFallback ? 'Abrir runs no portal' : 'Abrir run no portal'}
         </button>
         <button
           type="button"
