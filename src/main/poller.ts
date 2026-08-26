@@ -64,6 +64,15 @@ export class Poller {
   readonly #now: () => Date
 
   readonly #workflowState = new Map<string, WorkflowState>()
+  /**
+   * Últimos runs vistos por workflow, com qualquer status.
+   *
+   * Serve à tela de detalhes, que mostra sucessos junto das falhas para
+   * distinguir "quebrou agora" de "quebrado o dia inteiro". Fica aqui — e não
+   * numa chamada nova ao Azure — porque o ciclo já traz esses runs; buscá-los
+   * de novo ao abrir o detalhe seria quota gasta à toa.
+   */
+  readonly #recentByWorkflow = new Map<string, WorkflowRun[]>()
   /** runId -> timestamp em que foi visto. Base do dedupe. */
   readonly #seenRuns = new Map<string, number>()
   /** Runs dispensados manualmente pelo usuário; não voltam para a lista. */
@@ -78,8 +87,10 @@ export class Poller {
   /** Troca a fonte de dados (ex.: alternar entre Azure e demo). */
   setAdapters(adapters: LogicAppAdapter[]): void {
     this.#adapters = adapters
-    // Cursores pertencem à fonte antiga; mantê-los esconderia runs da nova.
+    // Cursores e histórico pertencem à fonte antiga; mantê-los esconderia
+    // runs da nova e misturaria dados de demo com dados reais.
     this.#workflowState.clear()
+    this.#recentByWorkflow.clear()
   }
 
   setLookbackHours(hours: number): void {
@@ -115,6 +126,7 @@ export class Poller {
     )
 
     const allRuns = results.flat()
+    this.#rememberRecent(allRuns)
     const failures = allRuns.filter((run) => isFailureStatus(run.status))
 
     const newFailures: WorkflowRun[] = []
@@ -226,6 +238,40 @@ export class Poller {
       this.#workflowState.set(resourceId, state)
     }
     return state
+  }
+
+  /**
+   * Runs recentes de um workflow, mais recente primeiro.
+   * Devolve cópia: o chamador não deve conseguir mexer no estado interno.
+   */
+  getRecentRuns(workflowResourceId: string, limit: number): WorkflowRun[] {
+    return (this.#recentByWorkflow.get(workflowResourceId) ?? []).slice(0, limit)
+  }
+
+  /**
+   * Funde os runs do ciclo no histórico por workflow.
+   *
+   * Como o cursor avança, cada ciclo traz só o que é novo — por isso fundimos
+   * com o que já havia em vez de substituir, senão o histórico encolheria para
+   * um único run assim que o workflow ficasse quieto.
+   */
+  #rememberRecent(runs: readonly WorkflowRun[]): void {
+    const HISTORY_PER_WORKFLOW = 20
+    const touched = new Set<string>()
+
+    for (const run of runs) {
+      const list = this.#recentByWorkflow.get(run.workflowResourceId) ?? []
+      if (!list.some((existing) => existing.runId === run.runId)) list.push(run)
+      this.#recentByWorkflow.set(run.workflowResourceId, list)
+      touched.add(run.workflowResourceId)
+    }
+
+    for (const resourceId of touched) {
+      const list = this.#recentByWorkflow.get(resourceId)
+      if (!list) continue
+      list.sort((a, b) => Date.parse(b.startTime) - Date.parse(a.startTime))
+      if (list.length > HISTORY_PER_WORKFLOW) list.length = HISTORY_PER_WORKFLOW
+    }
   }
 
   /** Remove entradas de dedupe velhas para o Set não crescer sem limite. */

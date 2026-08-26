@@ -31,6 +31,14 @@ O toggle fica em **⚙︎ → Fonte de dados**, e é o mecanismo que permite rod
 
 A troca é total: modo demo não instancia SDK do Azure, e nada além de `AppController.#buildAdapters` sabe que existem dois modos. Poller, dedupe, notificação, IPC e UI são idênticos nos dois casos — é o que garante que o que você testa em demo é o mesmo código que roda em produção.
 
+## Interação
+
+**Listagem** — clicar na linha abre a tela de detalhes. Abrir no portal virou um botão explícito (ícone de link externo, aparece no hover), ao lado do descartar. A troca é deliberada: a mensagem de erro na lista vem truncada em uma linha, e mandar o usuário ao navegador só para ler o motivo era um caminho longo demais.
+
+**Detalhes** — mensagem de erro completa (sem truncar), código do erro, horários, duração, run name e correlation ID. Quando o Azure devolve um payload que a normalização não cobre, um "Ver retorno do Azure" mostra o JSON cru.
+
+A tela também lista os **últimos 5 runs do workflow, com sucessos e falhas**. Sucessos entram de propósito: três falhas seguidas contam uma história diferente de uma falha isolada entre sucessos, e a listagem principal não mostra isso. Esses dados saem do que o poller já coletou — abrir os detalhes não gera chamada nova ao Azure.
+
 ## Arquitetura
 
 ```
@@ -70,6 +78,8 @@ O renderer nunca vê credencial, SDK ou URL não validada. Recebe `AppState` pro
 - A URL da **lista de runs** usa o formato estável e documentado — essa parte é confiável.
 - A URL do **run específico** segue o formato derivado do resource ID, e está isolada em duas funções no topo de `portal-url.ts`, comentadas com `VALIDAR`. Se o formato estiver errado, o conserto é editar só essas linhas.
 - Existe fallback: qualquer falha na construção cai na lista de runs do workflow, nunca num 404.
+
+**A extração da mensagem de erro é a parte com maior chance de precisar de ajuste.** O SDK tipa `WorkflowRun.error` como `any` e o formato varia na prática (plano, aninhado em `error.error`, com o motivo só em `details[]`, ou string solta). `azure/run-error.ts` tenta os formatos conhecidos em ordem e sempre guarda o payload cru — então mesmo se a normalização errar, o "Ver retorno do Azure" mostra o que realmente chegou. Se aparecer um formato novo, é lá que se acrescenta, e há testes cobrindo cada caso.
 
 **A camada Azure não foi exercitada contra um tenant real** — não havia credencial nesta máquina. Os caminhos de erro (sem credencial, sem permissão, throttling) foram testados; os caminhos de sucesso foram verificados por tipos e testes, não por rede. Pontos que merecem conferência no primeiro uso real estão comentados em `standard.ts` e `discovery.ts`.
 

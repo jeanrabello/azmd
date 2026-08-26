@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type AppState, type RunbarAPI, type Settings } from '../shared/types.js'
+import {
+  IPC,
+  type AppState,
+  type RunDetails,
+  type RunbarAPI,
+  type Settings,
+} from '../shared/types.js'
 
 /**
  * Ponte entre main e renderer.
@@ -24,6 +30,10 @@ const api: RunbarAPI = {
   },
 
   openRunInPortal: (runId) => ipcRenderer.invoke(IPC.openRunInPortal, runId) as Promise<void>,
+  openWorkflowInPortal: (runId) =>
+    ipcRenderer.invoke(IPC.openWorkflowInPortal, runId) as Promise<void>,
+  getRunDetails: (runId) =>
+    ipcRenderer.invoke(IPC.getRunDetails, runId) as Promise<RunDetails | undefined>,
   refreshNow: () => ipcRenderer.invoke(IPC.refreshNow) as Promise<void>,
   getSettings: () => ipcRenderer.invoke(IPC.getSettings) as Promise<Settings>,
   updateSettings: (patch) => ipcRenderer.invoke(IPC.updateSettings, patch) as Promise<Settings>,

@@ -3,6 +3,7 @@ import type { TokenCredential } from '@azure/identity'
 import type { Scope, WorkflowRef, WorkflowRun } from '../../shared/types.js'
 import type { LogicAppAdapter } from './adapter.js'
 import { makeRunId, normalizeStatus } from './adapter.js'
+import { extractRunError } from './run-error.js'
 
 /**
  * Logic Apps Consumption — recursos `Microsoft.Logic/workflows`.
@@ -84,9 +85,10 @@ export class ConsumptionAdapter implements LogicAppAdapter {
         status: normalizeStatus(run.status),
         startTime: new Date(run.startTime).toISOString(),
         ...(run.endTime ? { endTime: new Date(run.endTime).toISOString() } : {}),
-        ...(run.error?.message
-          ? { error: { code: run.error.code, message: run.error.message } }
-          : {}),
+        ...(() => {
+          const error = extractRunError(run.error, run.code)
+          return error ? { error } : {}
+        })(),
         ...(run.correlation?.clientTrackingId
           ? { correlationId: run.correlation.clientTrackingId }
           : {}),

@@ -83,6 +83,16 @@ export interface WorkflowRun {
 export interface RunError {
   readonly code?: string
   readonly message: string
+  /**
+   * Payload de erro cru, como veio do Azure.
+   *
+   * O SDK tipa `WorkflowRun.error` como `any` e o formato varia: às vezes
+   * `{code, message}`, às vezes aninhado em `error.error`, às vezes com
+   * `details[]`. Em vez de adivinhar, guardamos o original para a tela de
+   * detalhes poder mostrar o que realmente chegou quando a mensagem
+   * normalizada não for suficiente.
+   */
+  readonly raw?: string
 }
 
 /**
@@ -93,7 +103,39 @@ export interface FailedRun extends WorkflowRun {
   readonly portalUrl: string
   /** true quando o deep link é o fallback (lista de runs), não o run específico. */
   readonly portalUrlIsFallback: boolean
+  /** Link para a lista de runs do workflow — usado na tela de detalhes. */
+  readonly workflowPortalUrl: string
 }
+
+/**
+ * Um run qualquer do histórico recente de um workflow, com ou sem falha.
+ *
+ * Existe separado de `FailedRun` porque aqui o status importa: a tela de
+ * detalhes mostra sucessos junto das falhas para distinguir "quebrou agora"
+ * de "quebrado o dia inteiro".
+ */
+export interface WorkflowRunSummary {
+  readonly runId: string
+  readonly runName: string
+  readonly status: RunStatus
+  readonly startTime: string
+  readonly endTime?: string
+  readonly portalUrl: string
+  /** Marca o run que está sendo detalhado, para destaque na lista. */
+  readonly isCurrent: boolean
+}
+
+/** Tudo que a tela de detalhes precisa. Montado no main, sob demanda. */
+export interface RunDetails {
+  readonly run: FailedRun
+  /** Últimos runs do mesmo workflow (sucessos e falhas), mais recente primeiro. */
+  readonly recentRuns: readonly WorkflowRunSummary[]
+  /** Duração do run em ms, quando já terminou. */
+  readonly durationMs?: number
+}
+
+/** Quantos runs recentes a tela de detalhes exibe. */
+export const RECENT_RUNS_LIMIT = 5
 
 // ---------------------------------------------------------------------------
 // Escopo e configuração
@@ -186,6 +228,10 @@ export interface RunbarAPI {
   getState(): Promise<AppState>
   onStateChanged(cb: (state: AppState) => void): () => void
   openRunInPortal(runId: string): Promise<void>
+  /** Abre a lista de runs do workflow no portal. */
+  openWorkflowInPortal(runId: string): Promise<void>
+  /** Detalhes de um run, incluindo o histórico recente do workflow. */
+  getRunDetails(runId: string): Promise<RunDetails | undefined>
   refreshNow(): Promise<void>
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Settings>): Promise<Settings>
@@ -199,6 +245,8 @@ export const IPC = {
   getState: 'runbar:get-state',
   stateChanged: 'runbar:state-changed',
   openRunInPortal: 'runbar:open-run-in-portal',
+  openWorkflowInPortal: 'runbar:open-workflow-in-portal',
+  getRunDetails: 'runbar:get-run-details',
   refreshNow: 'runbar:refresh-now',
   getSettings: 'runbar:get-settings',
   updateSettings: 'runbar:update-settings',

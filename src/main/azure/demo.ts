@@ -228,6 +228,25 @@ export class DemoAdapter implements LogicAppAdapter {
       error: {
         message: error?.message ?? 'Run terminou com status Failed',
         ...(error?.code ? { code: error.code } : {}),
+        // O payload cru existe também no demo, e no mesmo formato aninhado que
+        // o Azure costuma devolver. Sem isso o modo demo não exercitaria o
+        // "Ver retorno do Azure" da tela de detalhes — justamente o caminho
+        // que só aparece com dado real.
+        raw: JSON.stringify(
+          {
+            error: {
+              code: error?.code ?? 'ActionFailed',
+              message: error?.message ?? 'Run terminou com status Failed',
+            },
+            properties: {
+              runName,
+              workflow: wf.name,
+              clientTrackingId: `demo-${runName}`,
+            },
+          },
+          null,
+          2,
+        ),
       },
     }
   }

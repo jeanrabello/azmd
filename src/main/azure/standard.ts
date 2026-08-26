@@ -3,6 +3,7 @@ import type { TokenCredential } from '@azure/identity'
 import type { Scope, WorkflowRef, WorkflowRun } from '../../shared/types.js'
 import type { LogicAppAdapter } from './adapter.js'
 import { makeRunId, normalizeStatus } from './adapter.js'
+import { extractRunError } from './run-error.js'
 import { resourceGroupFromId } from './consumption.js'
 
 /**
@@ -105,7 +106,7 @@ export class StandardAdapter implements LogicAppAdapter {
       const startTime = new Date(run.startTime)
       if (startTime < since) continue
 
-      const errorMessage = extractErrorMessage(run.error)
+      const error = extractRunError(run.error, run.code)
 
       runs.push({
         runName: run.name,
@@ -116,8 +117,8 @@ export class StandardAdapter implements LogicAppAdapter {
         status: normalizeStatus(run.status),
         startTime: startTime.toISOString(),
         ...(run.endTime ? { endTime: new Date(run.endTime).toISOString() } : {}),
-        ...(errorMessage
-          ? { error: { message: errorMessage, ...(run.code ? { code: run.code } : {}) } }
+        ...(error
+          ? { error }
           : {}),
         ...(run.correlation?.clientTrackingId
           ? { correlationId: run.correlation.clientTrackingId }
@@ -128,14 +129,3 @@ export class StandardAdapter implements LogicAppAdapter {
   }
 }
 
-/**
- * O campo `error` do WorkflowRun de Standard vem como `Record<string, unknown>`
- * no SDK (sem tipo forte, ao contrário do Consumption), então extraímos a
- * mensagem com checagem em tempo de execução em vez de confiar num cast.
- */
-function extractErrorMessage(error: Record<string, unknown> | undefined): string | undefined {
-  if (!error) return undefined
-  const message = error['message']
-  if (typeof message === 'string' && message.length > 0) return message
-  return undefined
-}

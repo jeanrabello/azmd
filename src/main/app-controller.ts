@@ -4,14 +4,17 @@ import { createAzureAdapters } from './azure/discovered.js'
 import { DemoAdapter, DEMO_TENANT_ID } from './azure/demo.js'
 import { createAzureCredential, probeCredential } from './auth/credential.js'
 import { Poller, classifyError } from './poller.js'
-import { buildPortalLink } from './portal-url.js'
+import { buildPortalLink, buildRunsListUrl } from './portal-url.js'
 import { SettingsStore } from './settings-store.js'
+import { RECENT_RUNS_LIMIT } from '../shared/types.js'
 import type {
   AppState,
   ConnectionState,
   FailedRun,
+  RunDetails,
   Settings,
   WorkflowRun,
+  WorkflowRunSummary,
 } from '../shared/types.js'
 
 /**
@@ -170,10 +173,50 @@ export class AppController {
     if (probe.ok) this.#resolvedTenantId = probe.tenantId
   }
 
-  /** Anexa o deep link resolvido; o renderer nunca monta URL. */
+  /** Anexa os deep links resolvidos; o renderer nunca monta URL. */
   #toFailedRun(run: WorkflowRun, tenantId: string | undefined): FailedRun {
     const link = buildPortalLink(run, tenantId)
-    return { ...run, portalUrl: link.url, portalUrlIsFallback: link.isFallback }
+    return {
+      ...run,
+      portalUrl: link.url,
+      portalUrlIsFallback: link.isFallback,
+      workflowPortalUrl: buildRunsListUrl(run.workflowResourceId, tenantId),
+    }
+  }
+
+  /**
+   * Monta os detalhes de um run para a tela de detalhes.
+   *
+   * Não faz chamada nova ao Azure: o histórico sai do que o poller já coletou.
+   * Retorna undefined se o run não está mais na lista (foi descartado, ou o
+   * modo mudou).
+   */
+  getRunDetails(runId: string): RunDetails | undefined {
+    const run = this.findRun(runId)
+    if (!run) return undefined
+
+    const tenantId = this.#settings.get().tenantId ?? this.#resolvedTenantId
+    const recentRuns: WorkflowRunSummary[] = this.#poller
+      .getRecentRuns(run.workflowResourceId, RECENT_RUNS_LIMIT)
+      .map((entry) => ({
+        runId: entry.runId,
+        runName: entry.runName,
+        status: entry.status,
+        startTime: entry.startTime,
+        ...(entry.endTime ? { endTime: entry.endTime } : {}),
+        portalUrl: buildPortalLink(entry, tenantId).url,
+        isCurrent: entry.runId === run.runId,
+      }))
+
+    const durationMs = run.endTime
+      ? Date.parse(run.endTime) - Date.parse(run.startTime)
+      : undefined
+
+    return {
+      run,
+      recentRuns,
+      ...(durationMs !== undefined && Number.isFinite(durationMs) ? { durationMs } : {}),
+    }
   }
 
   // -------------------------------------------------------------------------

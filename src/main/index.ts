@@ -76,6 +76,14 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
     await openPortalUrl(run.portalUrl)
   })
 
+  ipcMain.handle(IPC.openWorkflowInPortal, async (_event, runId: string) => {
+    const run = ctrl.findRun(runId)
+    if (!run) return
+    await openPortalUrl(run.workflowPortalUrl)
+  })
+
+  ipcMain.handle(IPC.getRunDetails, (_event, runId: string) => ctrl.getRunDetails(runId))
+
   ipcMain.handle(IPC.dismissRun, (_event, runId: string) => {
     ctrl.dismissRun(runId)
   })

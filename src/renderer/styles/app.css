@@ -145,7 +145,17 @@ button {
 .app-content {
   flex: 1;
   overflow-y: auto;
-  min-height: 120px;
+  /* min-height:0 é o que permite um filho flex rolar dentro do container em
+   * vez de esticá-lo; sem isso a tela de detalhes empurra o rodapé para fora. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A tela de detalhes tem rolagem própria (só o miolo rola, nav e ações ficam
+ * fixos), então o container não deve rolar junto. */
+.app-content:has(> .details) {
+  overflow: hidden;
 }
 
 /* ---------------------------------------------------------------------------
@@ -382,30 +392,322 @@ button {
   flex-shrink: 0;
 }
 
-.run-row__dismiss {
+/* Ações da linha: abrir no portal e descartar. Ficam ocultas até o hover,
+ * como nas linhas do Mail/Finder, para a lista não virar um mural de botões. */
+.run-row__actions {
   flex-shrink: 0;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-right: 4px;
+}
+
+.run-row__action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
-  border-radius: 50%;
+  border-radius: 4px;
   color: var(--color-label-tertiary);
   font-size: 13px;
   line-height: 1;
   cursor: default;
   opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
-.run-row:hover .run-row__dismiss,
-.run-row__dismiss:focus-visible {
+.run-row:hover .run-row__action,
+.run-row__action:focus-visible {
   opacity: 1;
 }
 
-.run-row__dismiss:hover {
+.run-row__action:hover {
   background: var(--color-fill-hover);
+  color: var(--color-accent);
+}
+
+.run-row__action--dismiss:hover {
   color: var(--color-label);
+}
+
+.run-row__action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Marca discreta de que o link cai na lista de runs, não no run exato. */
+.run-row__action-flag {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-warning);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tela de detalhes
+ * ------------------------------------------------------------------------ */
+
+.details {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.details__nav {
+  flex-shrink: 0;
+  padding: 8px 12px 4px;
+}
+
+.details__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 14px 12px;
+}
+
+.details__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.details__workflow {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-label);
+  /* Nomes de workflow podem ser longos e não têm espaços onde quebrar. */
+  overflow-wrap: anywhere;
+}
+
+.details__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.details__section {
+  padding-top: 14px;
+}
+
+.details__section-title {
+  margin: 0 0 6px;
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-label-tertiary);
+}
+
+.details__error-code {
+  margin: 0 0 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: var(--font-size-caption);
+  color: var(--color-error);
+}
+
+/* A mensagem inteira, sem truncar — é o motivo desta tela existir. */
+.details__error-message {
+  margin: 0;
+  font-size: var(--font-size-body);
+  line-height: 1.45;
+  color: var(--color-label);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.details__raw {
+  margin-top: 8px;
+}
+
+.details__raw-body {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--radius-control);
+  background: var(--color-fill-hover);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.details__facts {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.details__fact {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.details__fact-label {
+  flex-shrink: 0;
+  width: 82px;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-tertiary);
+}
+
+.details__fact-value {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.details__fact-value--mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.details__placeholder {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-label-secondary);
+}
+
+.details__actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-separator);
+}
+
+.details__action {
+  flex: 1;
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-badge-bg);
+  color: var(--color-label);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  cursor: default;
+}
+
+.details__action:hover {
+  background: var(--color-fill-hover);
+}
+
+.details__action--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-label);
+}
+
+.details__action--primary:hover {
+  filter: brightness(1.08);
+  background: var(--color-accent);
+}
+
+.details__action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Histórico recente do workflow -------------------------------------------- */
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.history__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: var(--font-size-caption);
+}
+
+.history__row--current {
+  background: var(--color-accent-fill);
+}
+
+.history__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-idle);
+}
+
+.history__dot--failure {
+  background: var(--color-error);
+}
+
+.history__dot--success {
+  background: var(--color-success);
+}
+
+.history__dot--running {
+  background: var(--color-accent);
+}
+
+.history__status {
+  color: var(--color-label);
+}
+
+.history__time {
+  margin-left: auto;
+  color: var(--color-label-tertiary);
+}
+
+.history__current-tag {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  color: var(--color-accent-label);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Badge de status, reaproveitado na tela de detalhes ----------------------- */
+
+.status-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color-badge-bg);
+  color: var(--color-label-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-badge--failure {
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+}
+
+.status-badge--success {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.link-button--small {
+  font-size: var(--font-size-caption);
 }
 
 /* ---------------------------------------------------------------------------

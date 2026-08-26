@@ -241,3 +241,59 @@ describe('classifyError', () => {
     expect(error.message).toContain('az login')
   })
 })
+
+describe('Poller — histórico para a tela de detalhes', () => {
+  it('guarda sucessos junto das falhas', async () => {
+    const adapter = new FakeAdapter()
+    adapter.runs = [
+      makeRun('ok', '2026-08-26T10:00:00.000Z', 'Succeeded'),
+      makeRun('bad', '2026-08-26T10:01:00.000Z', 'Failed'),
+    ]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+    await poller.runCycle(EMPTY_SCOPE)
+
+    const recent = poller.getRecentRuns(WORKFLOW.resourceId, 5)
+    expect(recent.map((r) => r.status).sort()).toEqual(['Failed', 'Succeeded'])
+  })
+
+  it('acumula entre ciclos em vez de substituir', async () => {
+    // O cursor avança, então cada ciclo traz só o que é novo. Se o histórico
+    // fosse substituído, ele encolheria para um run assim que o workflow
+    // ficasse quieto — exatamente o que a tela de detalhes não pode sofrer.
+    const adapter = new FakeAdapter()
+    adapter.runs = [makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+    await poller.runCycle(EMPTY_SCOPE)
+
+    adapter.runs = [makeRun('r2', '2026-08-26T11:00:00.000Z', 'Succeeded')]
+    await poller.runCycle(EMPTY_SCOPE)
+
+    const recent = poller.getRecentRuns(WORKFLOW.resourceId, 5)
+    expect(recent.map((r) => r.runName)).toEqual(['r2', 'r1'])
+  })
+
+  it('ordena do mais recente para o mais antigo e respeita o limite', async () => {
+    const adapter = new FakeAdapter()
+    adapter.runs = [
+      makeRun('a', '2026-08-26T08:00:00.000Z', 'Failed'),
+      makeRun('b', '2026-08-26T12:00:00.000Z', 'Failed'),
+      makeRun('c', '2026-08-26T10:00:00.000Z', 'Succeeded'),
+    ]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+    await poller.runCycle(EMPTY_SCOPE)
+
+    expect(poller.getRecentRuns(WORKFLOW.resourceId, 2).map((r) => r.runName)).toEqual(['b', 'c'])
+  })
+
+  it('esquece o histórico ao trocar de fonte de dados', async () => {
+    const adapter = new FakeAdapter()
+    adapter.runs = [makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+    await poller.runCycle(EMPTY_SCOPE)
+    expect(poller.getRecentRuns(WORKFLOW.resourceId, 5)).toHaveLength(1)
+
+    // Misturar runs de demo com runs reais seria pior que perder o histórico.
+    poller.setAdapters([new FakeAdapter()])
+    expect(poller.getRecentRuns(WORKFLOW.resourceId, 5)).toHaveLength(0)
+  })
+})

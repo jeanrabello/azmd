@@ -5,14 +5,15 @@ import RunList from './components/RunList'
 import EmptyState from './components/EmptyState'
 import ErrorState from './components/ErrorState'
 import SettingsPanel from './components/SettingsPanel'
+import RunDetailsPanel from './components/RunDetailsPanel'
 import Footer from './components/Footer'
 
 /** Vistas possíveis do popover. Mantido simples de propósito: não é um router. */
-type View = 'runs' | 'settings'
+type View = { kind: 'runs' } | { kind: 'settings' } | { kind: 'details'; runId: string }
 
 export default function App(): React.JSX.Element {
   const [state, setState] = useState<AppState | null>(null)
-  const [view, setView] = useState<View>('runs')
+  const [view, setView] = useState<View>({ kind: 'runs' })
 
   useEffect(() => {
     let cancelled = false
@@ -35,6 +36,15 @@ export default function App(): React.JSX.Element {
     }
   }, [])
 
+  // Se o run em detalhe sai da lista — descartado, ou o modo mudou — a tela
+  // ficaria presa num run que não existe mais. Volta para a listagem.
+  const detailRunMissing =
+    view.kind === 'details' && state !== null && !state.runs.some((r) => r.runId === view.runId)
+
+  useEffect(() => {
+    if (detailRunMissing) setView({ kind: 'runs' })
+  }, [detailRunMissing])
+
   if (!state) {
     // Ainda não recebemos o primeiro snapshot — evita piscar um estado vazio.
     return (
@@ -51,19 +61,23 @@ export default function App(): React.JSX.Element {
       <Header
         connection={connection}
         settings={settings}
-        onToggleSettings={() => setView(view === 'settings' ? 'runs' : 'settings')}
-        settingsOpen={view === 'settings'}
+        onToggleSettings={() =>
+          setView(view.kind === 'settings' ? { kind: 'runs' } : { kind: 'settings' })
+        }
+        settingsOpen={view.kind === 'settings'}
       />
 
       <main className="app-content">
-        {view === 'settings' ? (
-          <SettingsPanel settings={settings} onBack={() => setView('runs')} />
+        {view.kind === 'settings' ? (
+          <SettingsPanel settings={settings} onBack={() => setView({ kind: 'runs' })} />
+        ) : view.kind === 'details' ? (
+          <RunDetailsPanel runId={view.runId} onBack={() => setView({ kind: 'runs' })} />
         ) : connection.kind === 'error' ? (
           <ErrorState error={connection.error} />
         ) : runs.length === 0 ? (
           <EmptyState />
         ) : (
-          <RunList runs={runs} />
+          <RunList runs={runs} onSelectRun={(runId) => setView({ kind: 'details', runId })} />
         )}
       </main>
 
