@@ -4,6 +4,7 @@ import { AppController } from './app-controller.js'
 import { Notifier } from './notifier.js'
 import { TrayController } from './tray.js'
 import { openPortalUrl } from './safe-open.js'
+import { ensureCliPath } from './auth/shell-path.js'
 import { IPC, type AppState, type Settings } from '../shared/types.js'
 
 /**
@@ -120,7 +121,22 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
   })
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  /*
+   * Conserta o PATH antes de qualquer credencial existir.
+   *
+   * Aberto pela GUI, o app recebe só /usr/bin:/bin:/usr/sbin:/sbin — sem
+   * /opt/homebrew/bin, onde o `az` costuma estar. Sem isto, o modo Azure
+   * falha com "Azure CLI could not be found" mesmo com `az login` feito.
+   */
+  const cliPath = await ensureCliPath()
+  if (!cliPath.azFound) {
+    console.warn(
+      '[azmd] `az` não encontrado no PATH. O modo Azure vai falhar até que a ' +
+        'Azure CLI esteja instalada e autenticada (`az login`).',
+    )
+  }
+
   // Agente de menu bar: sem ícone no Dock. O Info.plist também traz
   // LSUIElement, mas isto cobre o `npm run dev`, que roda sem o plist.
   app.dock?.hide()

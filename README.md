@@ -143,6 +143,8 @@ O build empacotado foi testado: instala, abre, encontra os 33 Logic Apps e apare
 
 Se você já tinha ligado "iniciar com o login" rodando em modo dev, sobra uma entrada **Electron** apontando para `node_modules/electron/dist/Electron.app`. Remova em Ajustes do Sistema → Geral → Itens de Início de Sessão — o macOS não deixa um app apagar a entrada de outro.
 
+**Sobre o PATH e a Azure CLI.** Um app aberto pela GUI não herda o ambiente do shell: o macOS lhe dá apenas `/usr/bin:/bin:/usr/sbin:/sbin`. Como o `az` mora em `/opt/homebrew/bin`, o modo Azure falhava com "Azure CLI could not be found" — mesmo com `az login` feito, e mesmo funcionando quando o app rodava pelo terminal. `auth/shell-path.ts` conserta o PATH no boot: primeiro tenta os diretórios conhecidos (barato), e só recorre a um shell de login se ainda assim não achar. Testado com o PATH mínimo real: encontra `/opt/homebrew/bin/az` sem precisar do shell.
+
 Ainda **não é notarizado**: falta um certificado Developer ID. Na primeira abertura o Gatekeeper vai reclamar (botão direito → Abrir, ou `xattr -dr com.apple.quarantine /Applications/azmd.app`). Para notarizar: defina `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` e `APPLE_TEAM_ID`, obtenha o certificado e ligue `notarize: true`.
 
 Fase 4 do plano (MSAL no lugar do Azure CLI, safeStorage, auto-update) não foi implementada.

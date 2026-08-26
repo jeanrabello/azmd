@@ -353,10 +353,22 @@ export function classifyError(cause: unknown): AppError {
     return { kind: 'network', message: 'Sem conexão com o Azure.', detail: message }
   }
 
+  // "could not be found" é diferente de "não autenticado": o binário não está
+  // no PATH. Mandar rodar `az login` nesse caso é conselho errado — quem abre
+  // o app pela GUI já fez login, e o problema é o PATH enxuto que o macOS dá
+  // a apps de GUI (ver auth/shell-path.ts).
+  if (/could not be found|couldn't be found|ENOENT/i.test(message) && /cli/i.test(message)) {
+    return {
+      kind: 'auth',
+      message: 'A Azure CLI não foi encontrada. Instale com `brew install azure-cli`.',
+      detail: message,
+    }
+  }
+
   if (/credential|DefaultAzureCredential|AzureCliCredential|az login/i.test(message)) {
     return {
       kind: 'auth',
-      message: 'Nenhuma credencial do Azure encontrada. Rode `az login`.',
+      message: 'Sessão do Azure expirada ou ausente. Rode `az login` no terminal.',
       detail: message,
     }
   }
