@@ -1,0 +1,655 @@
+/* ---------------------------------------------------------------------------
+ * Runbar — estilos do popover.
+ *
+ * Objetivo: parecer um painel nativo do macOS, não uma página web dentro de
+ * uma janela. Fundo transparente (vibrancy do Electron cuida do blur), escala
+ * tipográfica do sistema, seleção de linha estilo Finder sidebar.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light dark;
+
+  /* Paleta clara — aproxima as cores semânticas do AppKit (label,
+   * secondaryLabel, separator, controlAccentColor) sem depender delas
+   * diretamente, já que não há acesso a APIs nativas de cor no CSS. */
+  --color-label: rgba(0, 0, 0, 0.85);
+  --color-label-secondary: rgba(0, 0, 0, 0.5);
+  --color-label-tertiary: rgba(0, 0, 0, 0.32);
+  --color-separator: rgba(0, 0, 0, 0.1);
+  --color-fill-hover: rgba(0, 0, 0, 0.05);
+  --color-accent: #0a84ff;
+  --color-accent-fill: rgba(10, 132, 255, 0.16);
+  --color-accent-label: #ffffff;
+
+  --color-success: #28a745;
+  --color-error: #ff3b30;
+  --color-warning: #ff9f0a;
+  --color-idle: rgba(0, 0, 0, 0.28);
+
+  --color-badge-bg: rgba(0, 0, 0, 0.06);
+  --color-demo-bg: #ff9f0a;
+  --color-demo-label: #1a1200;
+
+  --color-input-track: rgba(0, 0, 0, 0.12);
+  --color-scrollbar: rgba(0, 0, 0, 0.22);
+
+  --radius-row: 6px;
+  --radius-control: 6px;
+
+  --font-family-system: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-size-body: 13px;
+  --font-size-caption: 11px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-label: rgba(255, 255, 255, 0.92);
+    --color-label-secondary: rgba(255, 255, 255, 0.55);
+    --color-label-tertiary: rgba(255, 255, 255, 0.35);
+    --color-separator: rgba(255, 255, 255, 0.12);
+    --color-fill-hover: rgba(255, 255, 255, 0.08);
+    --color-accent: #0a84ff;
+    --color-accent-fill: rgba(10, 132, 255, 0.28);
+    --color-accent-label: #ffffff;
+
+    --color-success: #32d74b;
+    --color-error: #ff453a;
+    --color-warning: #ff9f0a;
+    --color-idle: rgba(255, 255, 255, 0.28);
+
+    --color-badge-bg: rgba(255, 255, 255, 0.1);
+    --color-demo-bg: #ff9f0a;
+    --color-demo-label: #1a1200;
+
+    --color-input-track: rgba(255, 255, 255, 0.18);
+    --color-scrollbar: rgba(255, 255, 255, 0.28);
+  }
+}
+
+/* Suporte a um data-theme explícito controlado pelo main (nativeTheme),
+ * caso o app force um tema em vez de seguir o SO. */
+:root[data-theme='dark'] {
+  --color-label: rgba(255, 255, 255, 0.92);
+  --color-label-secondary: rgba(255, 255, 255, 0.55);
+  --color-label-tertiary: rgba(255, 255, 255, 0.35);
+  --color-separator: rgba(255, 255, 255, 0.12);
+  --color-fill-hover: rgba(255, 255, 255, 0.08);
+  --color-accent: #0a84ff;
+  --color-accent-fill: rgba(10, 132, 255, 0.28);
+  --color-accent-label: #ffffff;
+
+  --color-success: #32d74b;
+  --color-error: #ff453a;
+  --color-warning: #ff9f0a;
+  --color-idle: rgba(255, 255, 255, 0.28);
+
+  --color-badge-bg: rgba(255, 255, 255, 0.1);
+  --color-demo-bg: #ff9f0a;
+  --color-demo-label: #1a1200;
+
+  --color-input-track: rgba(255, 255, 255, 0.18);
+  --color-scrollbar: rgba(255, 255, 255, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  /* Transparente de propósito — vibrancy: 'popover' do BrowserWindow pinta o
+   * fundo. Qualquer background opaco aqui quebra o efeito nativo. */
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-body);
+  color: var(--color-label);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 380px;
+  max-height: 520px;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+ * Layout raiz
+ * ------------------------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  max-height: 520px;
+  width: 380px;
+}
+
+.app--loading {
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 120px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Header
+ * ------------------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-separator);
+  -webkit-app-region: drag;
+}
+
+.app-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-header__title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.app-header__updated {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-idle);
+}
+
+.status-dot--ok {
+  background: var(--color-success);
+}
+
+.status-dot--connecting {
+  background: var(--color-warning);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.status-dot--error {
+  background: var(--color-error);
+}
+
+.status-dot--idle {
+  background: var(--color-idle);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.demo-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-demo-label);
+  background: var(--color-demo-bg);
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  cursor: default;
+  color: var(--color-label-secondary);
+}
+
+.icon-button:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-label);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-button--active {
+  background: var(--color-accent-fill);
+  color: var(--color-accent);
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Lista de runs — seleção estilo Finder sidebar
+ * ------------------------------------------------------------------------- */
+
+.run-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.run-row {
+  display: flex;
+  align-items: stretch;
+  border-radius: var(--radius-row);
+}
+
+.run-row:hover {
+  background: var(--color-fill-hover);
+}
+
+.run-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 7px 8px;
+  border-radius: var(--radius-row);
+  cursor: default;
+}
+
+/* O "hover/seleção com fill de destaque" pedido no brief: a linha inteira
+ * assume o preenchimento de acento quando focada via teclado, igual à
+ * sidebar do Finder ao navegar com as setas. */
+.run-row__main:focus-visible {
+  outline: none;
+  background: var(--color-accent-fill);
+}
+
+.run-row__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-row__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.kind-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--color-badge-bg);
+  color: var(--color-label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.fallback-indicator {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  cursor: default;
+}
+
+.run-row__bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-row__error {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.run-row__time {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-tertiary);
+  flex-shrink: 0;
+}
+
+.run-row__dismiss {
+  flex-shrink: 0;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--color-label-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: default;
+  opacity: 0;
+}
+
+.run-row:hover .run-row__dismiss,
+.run-row__dismiss:focus-visible {
+  opacity: 1;
+}
+
+.run-row__dismiss:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-label);
+}
+
+/* ---------------------------------------------------------------------------
+ * Estados vazio / erro — primeira classe, não afterthought
+ * ------------------------------------------------------------------------- */
+
+.state-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 40px 24px;
+  min-height: 200px;
+  color: var(--color-label-secondary);
+}
+
+.state-view__glyph {
+  color: var(--color-success);
+  margin-bottom: 4px;
+}
+
+.state-view__glyph--error {
+  color: var(--color-error);
+}
+
+.state-view__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-label);
+  max-width: 280px;
+}
+
+.state-view__subtitle {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+.state-view--error .state-view__title {
+  max-width: 260px;
+}
+
+.primary-button {
+  margin-top: 4px;
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-accent);
+  color: var(--color-accent-label);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.primary-button:hover {
+  filter: brightness(1.08);
+}
+
+.link-button {
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 12px;
+  padding: 2px;
+  cursor: default;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.error-details {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.error-details__content {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--color-fill-hover);
+  border-radius: var(--radius-control);
+  font-size: 10px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--color-label-secondary);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------------------
+ * Settings
+ * ------------------------------------------------------------------------- */
+
+.settings-panel {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-panel__header {
+  display: flex;
+  align-items: center;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-section__title {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-label-tertiary);
+  margin: 0 0 2px;
+}
+
+.settings-caption {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  margin: 2px 0 0;
+  line-height: 1.4;
+}
+
+.mode-toggle {
+  display: flex;
+  background: var(--color-badge-bg);
+  border-radius: var(--radius-control);
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-toggle__option {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+  cursor: default;
+}
+
+.mode-toggle__option--active {
+  background: var(--color-accent);
+  color: var(--color-accent-label);
+  font-weight: 500;
+}
+
+.settings-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-label);
+  margin-top: 4px;
+}
+
+.settings-row__value {
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='range'] {
+  width: 100%;
+  margin: 2px 0 4px;
+  accent-color: var(--color-accent);
+}
+
+.settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--color-label);
+  padding: 3px 0;
+  cursor: default;
+}
+
+.settings-checkbox input[type='checkbox'] {
+  accent-color: var(--color-accent);
+  width: 13px;
+  height: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Footer
+ * ------------------------------------------------------------------------- */
+
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-top: 1px solid var(--color-separator);
+  flex-shrink: 0;
+}
+
+.app-footer__count {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+ * Loading
+ * ------------------------------------------------------------------------- */
+
+.loading-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--color-separator);
+  border-top-color: var(--color-label-secondary);
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Scrollbar fina, estilo macOS overlay
+ * ------------------------------------------------------------------------- */
+
+.app-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-content::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.app-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-label-secondary);
+  background-clip: padding-box;
+}

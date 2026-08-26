@@ -1,0 +1,39 @@
+appId: com.jeanrabello.runbar
+productName: Runbar
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+extraResources:
+  # tray.ts procura os ícones em <resources>/icons quando empacotado.
+  - from: resources/icons
+    to: icons
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # Hardened runtime é pré-requisito para notarização.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    # Agente de menu bar: sem ícone no Dock, sem janela principal.
+    LSUIElement: true
+    NSSupportsAutomaticGraphicsSwitching: true
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.dmg
+
+# Assinatura e notarização ficam desligadas até haver credencial de Developer ID.
+# Para ligar: definir APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD e APPLE_TEAM_ID e
+# trocar por `notarize: true`.
+afterSign: null
