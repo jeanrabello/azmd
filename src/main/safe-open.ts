@@ -10,7 +10,7 @@ import { isAllowedPortalUrl } from './portal-url.js'
  */
 export async function openPortalUrl(url: string): Promise<void> {
   if (!isAllowedPortalUrl(url)) {
-    console.warn('[runbar] URL bloqueada pela allowlist:', url)
+    console.warn('[azmd] URL bloqueada pela allowlist:', url)
     throw new Error('URL não permitida.')
   }
   await shell.openExternal(url)

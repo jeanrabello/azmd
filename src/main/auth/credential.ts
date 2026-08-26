@@ -11,7 +11,7 @@ import {
  *
  * Fase 1–3 do plano usam credenciais já presentes na máquina (Azure CLI etc.)
  * em vez de MSAL. A vantagem é não guardar segredo nenhum: quem detém o token
- * é o `az`, não o Runbar. A fase 4 troca isto por MSAL + safeStorage, e o
+ * é o `az`, não o azmd. A fase 4 troca isto por MSAL + safeStorage, e o
  * ponto de troca é só esta função — nada mais no app conhece credencial.
  *
  * Ordem da cadeia: variáveis de ambiente primeiro (útil em CI e para service

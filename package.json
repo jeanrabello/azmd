@@ -1,7 +1,7 @@
 {
-  "name": "runbar",
+  "name": "azmd",
   "version": "0.1.0",
-  "description": "Menu bar app for macOS that monitors Azure Logic Apps runs and notifies on failures",
+  "description": "Menu bar app para macOS que monitora runs de Azure Logic Apps e notifica falhas",
   "main": "./out/main/index.js",
   "author": "Jean Rabello",
   "license": "MIT",

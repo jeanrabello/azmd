@@ -1,8 +1,8 @@
-# Runbar
+# azmd
 
 App de menu bar para macOS que monitora runs de Azure Logic Apps, notifica falhas nativamente e abre o run no portal com um clique.
 
-Implementação do `PLANO_1.md` — fases 1 a 3.
+Antes chamado Runbar. Implementação do `PLANO_1.md` — fases 1 a 3.
 
 ## Rodando
 
@@ -20,7 +20,7 @@ O app sobe **em modo demo**, com dados mockados. Ele aparece na menu bar, não n
 | `npm run build` | Typecheck + bundle de main, preload e renderer |
 | `npm test` | Suíte de testes (vitest) |
 | `npm run typecheck` | Só a verificação de tipos |
-| `npm run pack:mac` | Gera .dmg/.zip (sem assinatura — ver Distribuição) |
+| `npm run pack:mac` | Gera .dmg/.zip em `release/` (assinatura ad-hoc — ver Distribuição) |
 
 ## Modo demo × modo Azure
 
@@ -132,6 +132,17 @@ Sobre a mensagem de erro: no tenant testado, 69 dos 76 runs falhos trazem o gen�
 
 ## Distribuição
 
-`electron-builder.yml` está configurado (dmg + zip, hardened runtime, entitlements, `LSUIElement`), mas **sem assinatura**: falta um certificado Developer ID. Para habilitar, defina `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` e `APPLE_TEAM_ID` e troque `afterSign` por notarização. Sem isso o Gatekeeper bloqueia na primeira abertura.
+```bash
+npm run pack:mac        # gera release/azmd-0.1.0-arm64.dmg
+cp -R release/mac-arm64/azmd.app /Applications/
+```
+
+O build empacotado foi testado: instala, abre, encontra os 33 Logic Apps e aparece como **azmd** no macOS.
+
+**Sobre o nome "Electron" nos Itens de Início de Sessão.** Sem certificado Developer ID, o electron-builder deixa a assinatura herdada do binário do Electron — cujo *identifier* é literalmente `Electron`. O macOS lê esse identifier ao registrar o login item, então o app aparecia com o nome errado mesmo com `CFBundleName` correto. `scripts/adhoc-sign.cjs` (rodado via `afterSign`) reassina ad-hoc com o appId, e aí o registro sai como `azmd`.
+
+Se você já tinha ligado "iniciar com o login" rodando em modo dev, sobra uma entrada **Electron** apontando para `node_modules/electron/dist/Electron.app`. Remova em Ajustes do Sistema → Geral → Itens de Início de Sessão — o macOS não deixa um app apagar a entrada de outro.
+
+Ainda **não é notarizado**: falta um certificado Developer ID. Na primeira abertura o Gatekeeper vai reclamar (botão direito → Abrir, ou `xattr -dr com.apple.quarantine /Applications/azmd.app`). Para notarizar: defina `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` e `APPLE_TEAM_ID`, obtenha o certificado e ligue `notarize: true`.
 
 Fase 4 do plano (MSAL no lugar do Azure CLI, safeStorage, auto-update) não foi implementada.

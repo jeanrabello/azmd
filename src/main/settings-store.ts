@@ -135,7 +135,7 @@ export class SettingsStore {
       writeFileSync(temp, JSON.stringify(settings, null, 2), 'utf8')
       renameSync(temp, target)
     } catch (error) {
-      console.error('[runbar] falha ao salvar settings:', error)
+      console.error('[azmd] falha ao salvar settings:', error)
     }
   }
 }

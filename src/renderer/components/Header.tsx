@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ConnectionState, Settings } from '../../shared/types.js'
-import { formatRelativeTime } from '../lib/time.js'
+import { formatSyncAge } from '../lib/time.js'
 
 interface HeaderProps {
   readonly connection: ConnectionState
@@ -43,20 +43,30 @@ export default function Header({
   settingsOpen,
   onToggleSettings,
 }: HeaderProps): React.JSX.Element {
-  // Força um re-render por minuto para o texto relativo não ficar parado.
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 60_000)
-    return () => clearInterval(id)
-  }, [])
+  const lastSyncedAt =
+    connection.kind === 'ok' || connection.kind === 'error' ? connection.lastSyncedAt : undefined
 
-  const lastSyncedAt = connection.kind === 'ok' || connection.kind === 'error' ? connection.lastSyncedAt : undefined
+  /*
+   * Tick de 1s enquanto a idade é contada em segundos, 30s depois disso.
+   *
+   * O intervalo de polling pode ser menor que um minuto, então um tick de
+   * 60s deixaria o texto travado — era isso que fazia a tela dizer sempre
+   * "atualizado agora". Passado o primeiro minuto, a granularidade cai para
+   * minutos e não há motivo para acordar a cada segundo.
+   */
+  const [, setTick] = useState(0)
+  const ageMs = lastSyncedAt ? Date.now() - Date.parse(lastSyncedAt) : 0
+  const tickMs = ageMs < 60_000 ? 1_000 : 30_000
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), tickMs)
+    return () => clearInterval(id)
+  }, [tickMs])
 
   const [refreshing, setRefreshing] = useState(false)
 
   function handleRefresh(): void {
     setRefreshing(true)
-    window.runbar
+    window.azmd
       .refreshNow()
       .finally(() => setRefreshing(false))
   }
@@ -70,7 +80,7 @@ export default function Header({
           aria-label={statusLabel(connection)}
           title={statusLabel(connection)}
         />
-        <h1 className="app-header__title">Runbar</h1>
+        <h1 className="app-header__title">azmd</h1>
         {settings.mode === 'demo' && (
           <span className="demo-badge" title="Exibindo dados de exemplo, não dados reais do Azure">
             DEMO
@@ -80,7 +90,9 @@ export default function Header({
 
       <div className="app-header__actions">
         <span className="app-header__updated">
-          {lastSyncedAt ? `atualizado ${formatRelativeTime(lastSyncedAt)}` : 'sem sincronização ainda'}
+          {lastSyncedAt
+            ? `${connection.kind === 'error' ? 'dados de' : 'atualizado'} ${formatSyncAge(lastSyncedAt)}`
+            : 'sem sincronização ainda'}
         </span>
 
         <button

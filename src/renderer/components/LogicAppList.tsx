@@ -39,7 +39,7 @@ export default function LogicAppList({
           <button
             type="button"
             className="link-button link-button--small"
-            onClick={() => void window.runbar.watchAll()}
+            onClick={() => void window.azmd.watchAll()}
           >
             Reativar todos
           </button>
@@ -69,12 +69,12 @@ function LogicAppRow({
 
   function handleToggleWatch(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.setLogicAppWatched(group.id, !watched)
+    void window.azmd.setLogicAppWatched(group.id, !watched)
   }
 
   function handleOpenPortal(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.openLogicAppInPortal(group.id)
+    void window.azmd.openLogicAppInPortal(group.id)
   }
 
   const watchLabel = watched ? 'Parar de monitorar' : 'Voltar a monitorar'

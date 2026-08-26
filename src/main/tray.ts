@@ -36,7 +36,7 @@ export class TrayController {
 
   init(): void {
     this.#tray = new Tray(this.#buildIcon('idle'))
-    this.#tray.setToolTip('Runbar')
+    this.#tray.setToolTip('azmd')
     this.#tray.on('click', () => this.toggle())
     // Botão direito também abre: é o gesto esperado numa menu bar.
     this.#tray.on('right-click', () => this.toggle())
@@ -164,15 +164,15 @@ export class TrayController {
 type IconStatus = 'idle' | 'alert' | 'error'
 
 function describeState(state: AppState): string {
-  if (state.connection.kind === 'error') return `Runbar — ${state.connection.error.message}`
+  if (state.connection.kind === 'error') return `azmd — ${state.connection.error.message}`
 
   const runCount = state.runs.length
-  if (runCount === 0) return 'Runbar — nenhuma falha'
+  if (runCount === 0) return 'azmd — nenhuma falha'
 
   // Com muitos Logic Apps, "12 falhas" não diz se é um app quebrado ou o
   // ambiente inteiro. O número de apps afetados responde isso de relance.
   const failingApps = state.logicApps.filter((app) => app.health === 'failing').length
   const runs = `${runCount} ${runCount === 1 ? 'falha' : 'falhas'}`
-  if (failingApps <= 1) return `Runbar — ${runs}`
-  return `Runbar — ${runs} em ${failingApps} Logic Apps`
+  if (failingApps <= 1) return `azmd — ${runs}`
+  return `azmd — ${runs} em ${failingApps} Logic Apps`
 }

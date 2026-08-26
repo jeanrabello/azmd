@@ -27,7 +27,7 @@ export default function RunDetailsPanel({
   useEffect(() => {
     let active = true
     setLoading(true)
-    void window.runbar.getRunDetails(runId).then((result) => {
+    void window.azmd.getRunDetails(runId).then((result) => {
       // O run pode ter sido descartado enquanto a busca acontecia.
       if (!active) return
       setDetails(result ?? null)
@@ -126,7 +126,7 @@ export default function RunDetailsPanel({
         <button
           type="button"
           className="details__action details__action--primary"
-          onClick={() => void window.runbar.openRunInPortal(run.runId)}
+          onClick={() => void window.azmd.openRunInPortal(run.runId)}
           title={
             run.portalUrlIsFallback
               ? 'O portal não expõe blade por run no Standard — abre o histórico, com este no topo'
@@ -140,7 +140,7 @@ export default function RunDetailsPanel({
         <button
           type="button"
           className="details__action"
-          onClick={() => void window.runbar.openWorkflowInPortal(run.runId)}
+          onClick={() => void window.azmd.openWorkflowInPortal(run.runId)}
         >
           Ver workflow
         </button>

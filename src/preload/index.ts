@@ -3,7 +3,7 @@ import {
   IPC,
   type AppState,
   type RunDetails,
-  type RunbarAPI,
+  type AzmdAPI,
   type Settings,
 } from '../shared/types.js'
 
@@ -12,9 +12,9 @@ import {
  *
  * O contrato exposto é fechado e mínimo: nenhum handle do Electron, nenhum
  * módulo do Node, nenhuma credencial. O renderer só consegue fazer o que está
- * listado em `RunbarAPI` — se não está aqui, não existe do lado de lá.
+ * listado em `AzmdAPI` — se não está aqui, não existe do lado de lá.
  */
-const api: RunbarAPI = {
+const api: AzmdAPI = {
   getState: () => ipcRenderer.invoke(IPC.getState) as Promise<AppState>,
 
   /**
@@ -51,4 +51,4 @@ const api: RunbarAPI = {
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,
 }
 
-contextBridge.exposeInMainWorld('runbar', api)
+contextBridge.exposeInMainWorld('azmd', api)

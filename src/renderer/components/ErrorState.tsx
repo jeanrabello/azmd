@@ -17,7 +17,7 @@ function copyFor(error: AppError): ErrorCopy {
       return {
         title: 'Não foi possível conectar ao Azure — verifique sua sessão',
         actionLabel: 'Reconectar',
-        onAction: () => window.runbar.refreshNow(),
+        onAction: () => window.azmd.refreshNow(),
       }
     case 'permission':
       return {

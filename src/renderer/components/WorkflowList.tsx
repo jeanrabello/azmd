@@ -67,12 +67,12 @@ function WorkflowRow({
 
   function handleToggleWatch(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.setWorkflowWatched(resourceId, !watched)
+    void window.azmd.setWorkflowWatched(resourceId, !watched)
   }
 
   function handleOpenPortal(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.openWorkflowResourceInPortal(resourceId)
+    void window.azmd.openWorkflowResourceInPortal(resourceId)
   }
 
   const watchLabel = watched ? 'Parar de monitorar' : 'Voltar a monitorar'

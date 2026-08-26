@@ -76,7 +76,7 @@ export class Notifier {
           : `${names.length} workflows`
     const notification = new Notification({
       title: `${runs.length} runs falharam`,
-      body: `Em ${subject}. Abra o Runbar para ver a lista.`,
+      body: `Em ${subject}. Abra o azmd para ver a lista.`,
       silent: false,
     })
     notification.on('click', () => this.#onActivateSummary?.())

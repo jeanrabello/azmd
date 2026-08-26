@@ -12,7 +12,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export default function SettingsPanel({ settings, onBack }: SettingsPanelProps): React.JSX.Element {
   function patch(update: Partial<Settings>): void {
-    window.runbar.updateSettings(update)
+    window.azmd.updateSettings(update)
   }
 
   function handleModeChange(mode: DataSourceMode): void {

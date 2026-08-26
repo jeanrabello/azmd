@@ -54,6 +54,14 @@ export class AppController {
   #resolvedTenantId: string | undefined
   #isFirstCycle = true
   #disposed = false
+  /**
+   * Momento da última sincronização BEM-SUCEDIDA.
+   *
+   * Sobrevive a ciclos com erro de propósito: quando a conexão cai, saber
+   * "os dados são de 8 min atrás" é justamente o que diz se ainda dá para
+   * confiar no que está na tela.
+   */
+  #lastSuccessfulSyncAt: string | undefined
 
   constructor(options: AppControllerOptions) {
     this.#settings = new SettingsStore()
@@ -169,7 +177,11 @@ export class AppController {
       const firstError = result.errors[0]
 
       if (totalFailure && firstError) {
-        this.#connection = { kind: 'error', error: firstError.error }
+        this.#connection = {
+          kind: 'error',
+          error: firstError.error,
+          ...(this.#lastSuccessfulSyncAt ? { lastSyncedAt: this.#lastSuccessfulSyncAt } : {}),
+        }
       } else if (result.discoveredWorkflows.length === 0 && result.errors.length > 0) {
         // Descoberta vazia COM erro: não é "tudo certo, nada existe" — é falha
         // de acesso. Sem isto o app mostrava ponto verde e lista vazia, que
@@ -181,11 +193,13 @@ export class AppController {
               kind: 'unknown',
               message: 'Não foi possível listar os Logic Apps.',
             },
+          ...(this.#lastSuccessfulSyncAt ? { lastSyncedAt: this.#lastSuccessfulSyncAt } : {}),
         }
       } else {
+        this.#lastSuccessfulSyncAt = new Date().toISOString()
         this.#connection = {
           kind: 'ok',
-          lastSyncedAt: new Date().toISOString(),
+          lastSyncedAt: this.#lastSuccessfulSyncAt,
           workflowsMonitored: result.workflowsPolled,
         }
       }
@@ -199,7 +213,11 @@ export class AppController {
         this.#onNewFailures(result.newFailures.map((run) => this.#toFailedRun(run, tenantId)))
       }
     } catch (cause) {
-      this.#connection = { kind: 'error', error: classifyError(cause) }
+      this.#connection = {
+        kind: 'error',
+        error: classifyError(cause),
+        ...(this.#lastSuccessfulSyncAt ? { lastSyncedAt: this.#lastSuccessfulSyncAt } : {}),
+      }
     } finally {
       this.#cycleInFlight = false
       this.#emit()
@@ -300,6 +318,7 @@ export class AppController {
       this.#logicApps = []
       this.#workflowSummaries = []
       this.#discovered = []
+      this.#lastSuccessfulSyncAt = undefined
       this.#isFirstCycle = true
       this.#resolvedTenantId = after.mode === 'demo' ? DEMO_TENANT_ID : undefined
       this.#connection = { kind: 'connecting' }

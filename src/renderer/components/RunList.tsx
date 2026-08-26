@@ -60,12 +60,12 @@ function RunRow({
 
   function handleOpenPortal(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.openRunInPortal(run.runId)
+    void window.azmd.openRunInPortal(run.runId)
   }
 
   function handleDismiss(event: React.MouseEvent): void {
     event.stopPropagation()
-    void window.runbar.dismissRun(run.runId)
+    void window.azmd.dismissRun(run.runId)
   }
 
   // No Standard o portal não tem blade por run: o link abre o histórico do

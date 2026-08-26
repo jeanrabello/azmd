@@ -44,7 +44,7 @@ function syncLoginItem(desired: boolean): void {
     if (app.getLoginItemSettings().openAtLogin === desired) return
     app.setLoginItemSettings({ openAtLogin: desired })
   } catch (error) {
-    console.warn('[runbar] não foi possível ajustar o início automático:', error)
+    console.warn('[azmd] não foi possível ajustar o início automático:', error)
   }
 }
 
@@ -136,7 +136,7 @@ void app.whenReady().then(() => {
   notifier = new Notifier({
     onActivate: (run) => {
       void openPortalUrl(run.portalUrl).catch((error: unknown) => {
-        console.error('[runbar] falha ao abrir o portal:', error)
+        console.error('[azmd] falha ao abrir o portal:', error)
       })
     },
     onActivateSummary: () => tray?.show(),

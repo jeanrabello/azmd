@@ -360,7 +360,7 @@ export interface AppState {
 // Contrato IPC exposto pelo preload
 // ---------------------------------------------------------------------------
 
-export interface RunbarAPI {
+export interface AzmdAPI {
   getState(): Promise<AppState>
   onStateChanged(cb: (state: AppState) => void): () => void
   openRunInPortal(runId: string): Promise<void>
@@ -388,20 +388,20 @@ export interface RunbarAPI {
 
 /** Nomes dos canais IPC. Centralizados para não divergirem entre os lados. */
 export const IPC = {
-  getState: 'runbar:get-state',
-  stateChanged: 'runbar:state-changed',
-  openRunInPortal: 'runbar:open-run-in-portal',
-  openWorkflowInPortal: 'runbar:open-workflow-in-portal',
-  getRunDetails: 'runbar:get-run-details',
-  refreshNow: 'runbar:refresh-now',
-  getSettings: 'runbar:get-settings',
-  updateSettings: 'runbar:update-settings',
-  setLogicAppWatched: 'runbar:set-logic-app-watched',
-  setWorkflowWatched: 'runbar:set-workflow-watched',
-  watchAll: 'runbar:watch-all',
-  openLogicAppInPortal: 'runbar:open-logic-app-in-portal',
-  openWorkflowResourceInPortal: 'runbar:open-workflow-resource-in-portal',
-  dismissRun: 'runbar:dismiss-run',
-  dismissAll: 'runbar:dismiss-all',
-  quit: 'runbar:quit',
+  getState: 'azmd:get-state',
+  stateChanged: 'azmd:state-changed',
+  openRunInPortal: 'azmd:open-run-in-portal',
+  openWorkflowInPortal: 'azmd:open-workflow-in-portal',
+  getRunDetails: 'azmd:get-run-details',
+  refreshNow: 'azmd:refresh-now',
+  getSettings: 'azmd:get-settings',
+  updateSettings: 'azmd:update-settings',
+  setLogicAppWatched: 'azmd:set-logic-app-watched',
+  setWorkflowWatched: 'azmd:set-workflow-watched',
+  watchAll: 'azmd:watch-all',
+  openLogicAppInPortal: 'azmd:open-logic-app-in-portal',
+  openWorkflowResourceInPortal: 'azmd:open-workflow-resource-in-portal',
+  dismissRun: 'azmd:dismiss-run',
+  dismissAll: 'azmd:dismiss-all',
+  quit: 'azmd:quit',
 } as const

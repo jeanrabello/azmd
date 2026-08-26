@@ -4,7 +4,7 @@ interface FooterProps {
 
 export default function Footer({ runCount }: FooterProps): React.JSX.Element {
   function handleQuit(): void {
-    window.runbar.quit()
+    window.azmd.quit()
   }
 
   return (

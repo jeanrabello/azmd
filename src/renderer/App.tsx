@@ -31,7 +31,7 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
 
-    window.runbar.getState().then((initial) => {
+    window.azmd.getState().then((initial) => {
       if (!cancelled) {
         setState(initial)
       }
@@ -39,7 +39,7 @@ export default function App(): React.JSX.Element {
 
     // onStateChanged devolve a função de unsubscribe — precisa ser chamada no
     // cleanup, senão o listener sobrevive a remounts (StrictMode duplica isso).
-    const unsubscribe = window.runbar.onStateChanged((next) => {
+    const unsubscribe = window.azmd.onStateChanged((next) => {
       setState(next)
     })
 

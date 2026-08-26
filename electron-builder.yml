@@ -1,5 +1,5 @@
-appId: com.jeanrabello.runbar
-productName: Runbar
+appId: com.jeanrabello.azmd
+productName: azmd
 directories:
   output: release
   buildResources: build
@@ -15,11 +15,12 @@ extraResources:
 
 mac:
   category: public.app-category.developer-tools
+  icon: build/icon.icns
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
     - target: zip
-      arch: [arm64, x64]
+      arch: [arm64]
   # Hardened runtime é pré-requisito para notarização.
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -29,11 +30,17 @@ mac:
     # Agente de menu bar: sem ícone no Dock, sem janela principal.
     LSUIElement: true
     NSSupportsAutomaticGraphicsSwitching: true
+    # Nome que o macOS mostra em Itens de Início de Sessão e no Finder.
+    # Sem isto o app aparecia como "Electron" ao ligar "iniciar com o login".
+    CFBundleName: azmd
+    CFBundleDisplayName: azmd
 
 dmg:
   artifactName: ${productName}-${version}-${arch}.dmg
 
-# Assinatura e notarização ficam desligadas até haver credencial de Developer ID.
-# Para ligar: definir APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD e APPLE_TEAM_ID e
-# trocar por `notarize: true`.
-afterSign: null
+# Sem Developer ID, o electron-builder deixa a assinatura herdada do binário
+# do Electron, cujo identifier é "Electron" — e é esse nome que o macOS mostra
+# em Itens de Início de Sessão. O script reassina ad-hoc com o appId correto.
+# Para notarizar de verdade: definir APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD e
+# APPLE_TEAM_ID, obter um certificado Developer ID e ligar `notarize: true`.
+afterSign: scripts/adhoc-sign.cjs
