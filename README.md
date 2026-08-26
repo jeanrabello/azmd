@@ -43,6 +43,8 @@ Logic Apps  →  workflows do app  →  runs falhos  →  detalhe do run
 
 **Escolher o que observar.** O ícone de olho em cada linha liga/desliga o monitoramento, tanto de um Logic App inteiro quanto de um workflow específico. O que não é observado não notifica, não aparece na contagem e **não é consultado** — o poller filtra antes da chamada, então ignorar economiza quota do ARM.
 
+Se muitos apps ficarem silenciados, um aviso no topo da lista diz quantos são e oferece **Reativar todos** — sem ele, silenciar tudo produzia uma tela idêntica à de "não encontrei nada", e reativar um a um era inviável.
+
 A seleção é *opt-out*: por padrão tudo é monitorado, e o que se guarda é a lista do que foi ignorado. É deliberado — um Logic App novo aparecendo no Azure deve ser monitorado sem exigir ação. O contrário faria o app silenciosamente deixar de avisar sobre coisas que não existiam quando a seleção foi feita, que é o pior modo de falhar para um monitor. Itens ignorados continuam visíveis na lista (marcados "Não monitorado") para poderem ser reativados.
 
 ## Interação

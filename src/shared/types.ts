@@ -359,6 +359,8 @@ export interface RunbarAPI {
   setLogicAppWatched(logicAppId: string, watched: boolean): Promise<void>
   /** Liga/desliga o monitoramento de um workflow específico. */
   setWorkflowWatched(workflowResourceId: string, watched: boolean): Promise<void>
+  /** Volta a observar tudo — desfaz silenciamentos em massa de uma vez. */
+  watchAll(): Promise<void>
   /** Abre no portal o App Service (Standard) ou o resource group (Consumption). */
   openLogicAppInPortal(logicAppId: string): Promise<void>
   /** Abre a lista de runs de um workflow no portal. */
@@ -380,6 +382,7 @@ export const IPC = {
   updateSettings: 'runbar:update-settings',
   setLogicAppWatched: 'runbar:set-logic-app-watched',
   setWorkflowWatched: 'runbar:set-workflow-watched',
+  watchAll: 'runbar:watch-all',
   openLogicAppInPortal: 'runbar:open-logic-app-in-portal',
   openWorkflowResourceInPortal: 'runbar:open-workflow-resource-in-portal',
   dismissRun: 'runbar:dismiss-run',

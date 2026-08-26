@@ -169,6 +169,18 @@ export class AppController {
 
       if (totalFailure && firstError) {
         this.#connection = { kind: 'error', error: firstError.error }
+      } else if (result.discoveredWorkflows.length === 0 && result.errors.length > 0) {
+        // Descoberta vazia COM erro: não é "tudo certo, nada existe" — é falha
+        // de acesso. Sem isto o app mostrava ponto verde e lista vazia, que
+        // parece bug e esconde o motivo real.
+        this.#connection = {
+          kind: 'error',
+          error:
+            firstError?.error ?? {
+              kind: 'unknown',
+              message: 'Não foi possível listar os Logic Apps.',
+            },
+        }
       } else {
         this.#connection = {
           kind: 'ok',
@@ -310,6 +322,16 @@ export class AppController {
     else ignored.add(workflowResourceId)
 
     this.#applyWatch({ ...current, ignoredWorkflowResourceIds: [...ignored] })
+  }
+
+  /**
+   * Limpa toda a seleção de ignorados.
+   *
+   * Uma ação só em vez de N chamadas: reativar dezenas de apps um a um
+   * dispararia um refresh por clique e gravaria o settings.json toda vez.
+   */
+  watchAll(): void {
+    this.#applyWatch({ ignoredLogicAppIds: [], ignoredWorkflowResourceIds: [] })
   }
 
   #applyWatch(watch: Settings['watch']): void {

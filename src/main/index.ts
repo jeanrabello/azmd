@@ -92,6 +92,10 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
     ctrl.setWorkflowWatched(resourceId, watched)
   })
 
+  ipcMain.handle(IPC.watchAll, () => {
+    ctrl.watchAll()
+  })
+
   ipcMain.handle(IPC.openLogicAppInPortal, async (_event, logicAppId: string) => {
     const url = ctrl.logicAppPortalUrl(logicAppId)
     if (url) await openPortalUrl(url)

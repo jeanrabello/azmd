@@ -147,3 +147,29 @@ describe('saúde e contadores', () => {
     expect(logicApps[0]?.failedRunCount).toBe(2)
   })
 })
+
+describe('todos os Logic Apps silenciados', () => {
+  // Regressão de um caso real: com todos os apps ignorados, a tela ficava
+  // idêntica à de "não encontrei nada" e não havia como reativar. A
+  // hierarquia precisa continuar devolvendo os apps para a UI poder avisar
+  // e oferecer o desfazer.
+  const wfA = standard('rg-plat', 'la-prd', 'notifica')
+  const wfC = consumption('rg-fin', 'concilia')
+
+  it('devolve todos os grupos mesmo com tudo ignorado', () => {
+    const { logicApps } = buildHierarchy({
+      workflows: [wfA, wfC],
+      failedRuns: [failure(wfA, '2026-08-26T10:00:00.000Z')],
+      watch: {
+        ignoredLogicAppIds: [groupFor(wfA).id, groupFor(wfC).id],
+        ignoredWorkflowResourceIds: [],
+      },
+      portalUrlFor,
+    })
+    expect(logicApps).toHaveLength(2)
+    expect(logicApps.every((a) => !a.watched)).toBe(true)
+    expect(logicApps.every((a) => a.health === 'unwatched')).toBe(true)
+    // Nada silenciado deve contar como falha pendente.
+    expect(logicApps.reduce((sum, a) => sum + a.failedRunCount, 0)).toBe(0)
+  })
+})

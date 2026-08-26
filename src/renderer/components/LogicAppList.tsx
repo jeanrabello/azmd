@@ -14,16 +14,43 @@ export default function LogicAppList({
   logicApps,
   onSelect,
 }: LogicAppListProps): React.JSX.Element {
+  const hiddenCount = logicApps.filter((app) => !app.watched).length
+  const visibleCount = logicApps.length - hiddenCount
+
   if (logicApps.length === 0) {
     return <p className="details__placeholder">Nenhum Logic App encontrado</p>
   }
 
   return (
-    <ul className="run-list">
-      {logicApps.map((logicApp) => (
-        <LogicAppRow key={logicApp.group.id} logicApp={logicApp} onSelect={onSelect} />
-      ))}
-    </ul>
+    <>
+      {/* Aviso quando tudo (ou quase) está silenciado.
+       *
+       * Sem isto, ignorar todos os Logic Apps produz uma tela idêntica à de
+       * "não encontrei nada" — o app parece quebrado quando na verdade está
+       * obedecendo. E sem uma ação de desfazer em massa, reativar 28 apps um
+       * a um é inviável. */}
+      {hiddenCount > 0 && (
+        <div className="muted-banner">
+          <span className="muted-banner__text">
+            {visibleCount === 0
+              ? `Todos os ${hiddenCount} Logic Apps estão silenciados.`
+              : `${hiddenCount} ${hiddenCount === 1 ? 'Logic App silenciado' : 'Logic Apps silenciados'}.`}
+          </span>
+          <button
+            type="button"
+            className="link-button link-button--small"
+            onClick={() => void window.runbar.watchAll()}
+          >
+            Reativar todos
+          </button>
+        </div>
+      )}
+      <ul className="run-list">
+        {logicApps.map((logicApp) => (
+          <LogicAppRow key={logicApp.group.id} logicApp={logicApp} onSelect={onSelect} />
+        ))}
+      </ul>
+    </>
   )
 }
 
