@@ -60,6 +60,8 @@ class SharedInventory {
     // StandardAdapter.listWorkflows espera para montar a URL do runtime.
     const expanded = await Promise.all(
       result.sites.map(async (site) => {
+        // O runtime não informa a região; o deep link do portal precisa dela.
+        this.#standard.rememberSiteLocation(site.resourceId, site.location)
         const siteScope: Scope = {
           subscriptionIds: [site.subscriptionId],
           resourceGroups: [site.resourceGroup],

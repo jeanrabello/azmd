@@ -10,6 +10,7 @@ import { SettingsStore } from './settings-store.js'
 import { RECENT_RUNS_LIMIT } from '../shared/types.js'
 import type {
   AppState,
+  WorkflowLinkContext,
   ConnectionState,
   FailedRun,
   LogicAppSummary,
@@ -156,7 +157,7 @@ export class AppController {
         workflows: result.discoveredWorkflows,
         failedRuns: result.allFailures,
         watch: settings.watch,
-        portalUrlFor: (workflow) => buildRunsListUrl(workflow.resourceId, tenantId),
+        portalUrlFor: (workflow) => buildRunsListUrl(workflow, tenantId),
       })
       this.#logicApps = hierarchy.logicApps
       this.#workflowSummaries = hierarchy.workflows
@@ -210,9 +211,26 @@ export class AppController {
     if (probe.ok) this.#resolvedTenantId = probe.tenantId
   }
 
+  /**
+   * Contexto necessário para montar o link do portal.
+   *
+   * Vem do inventário porque `WorkflowRun` não carrega região nem
+   * statefulness — e a WorkflowMenuBlade do Standard exige os dois.
+   */
+  #linkContext(workflowResourceId: string, kind: WorkflowRun['kind']): WorkflowLinkContext {
+    const workflow = this.#discovered.find((w) => w.resourceId === workflowResourceId)
+    return {
+      resourceId: workflowResourceId,
+      kind: workflow?.kind ?? kind,
+      location: workflow?.location ?? 'unknown',
+      ...(workflow?.statefulness ? { statefulness: workflow.statefulness } : {}),
+    }
+  }
+
   /** Anexa os deep links resolvidos; o renderer nunca monta URL. */
   #toFailedRun(run: WorkflowRun, tenantId: string | undefined): FailedRun {
-    const link = buildPortalLink(run, tenantId)
+    const context = this.#linkContext(run.workflowResourceId, run.kind)
+    const link = buildPortalLink(run, context, tenantId)
     const workflow = this.#discovered.find((w) => w.resourceId === run.workflowResourceId)
     const group = workflow ? groupFor(workflow) : undefined
 
@@ -220,7 +238,7 @@ export class AppController {
       ...run,
       portalUrl: link.url,
       portalUrlIsFallback: link.isFallback,
-      workflowPortalUrl: buildRunsListUrl(run.workflowResourceId, tenantId),
+      workflowPortalUrl: buildRunsListUrl(context, tenantId),
       logicAppId: group?.id ?? '',
       logicAppName: group?.name ?? '',
     }
@@ -246,7 +264,7 @@ export class AppController {
         status: entry.status,
         startTime: entry.startTime,
         ...(entry.endTime ? { endTime: entry.endTime } : {}),
-        portalUrl: buildPortalLink(entry, tenantId).url,
+        portalUrl: buildPortalLink(entry, this.#linkContext(entry.workflowResourceId, entry.kind), tenantId).url,
         isCurrent: entry.runId === run.runId,
       }))
 
@@ -350,7 +368,7 @@ export class AppController {
       workflows: this.#discovered,
       failedRuns: this.#runs,
       watch: settings.watch,
-      portalUrlFor: (workflow) => buildRunsListUrl(workflow.resourceId, tenantId),
+      portalUrlFor: (workflow) => buildRunsListUrl(workflow, tenantId),
     })
     this.#logicApps = hierarchy.logicApps
     this.#workflowSummaries = hierarchy.workflows

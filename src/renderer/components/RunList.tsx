@@ -68,8 +68,10 @@ function RunRow({
     void window.runbar.dismissRun(run.runId)
   }
 
+  // No Standard o portal não tem blade por run: o link abre o histórico do
+  // workflow, com este run no topo. Não é falha — é o que o portal oferece.
   const portalLabel = run.portalUrlIsFallback
-    ? 'Abrir no portal (cai na lista de runs — não achamos o link exato)'
+    ? 'Abrir histórico de runs no portal'
     : 'Abrir run no portal'
 
   return (
@@ -116,7 +118,6 @@ function RunRow({
               strokeLinejoin="round"
             />
           </svg>
-          {run.portalUrlIsFallback && <span className="run-row__action-flag" aria-hidden="true" />}
         </button>
 
         <button

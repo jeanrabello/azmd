@@ -129,13 +129,13 @@ export default function RunDetailsPanel({
           onClick={() => void window.runbar.openRunInPortal(run.runId)}
           title={
             run.portalUrlIsFallback
-              ? 'O portal não expõe link direto para este run — abre a lista, com ele no topo'
+              ? 'O portal não expõe blade por run no Standard — abre o histórico, com este no topo'
               : undefined
           }
         >
-          {/* No Standard o link cai na lista de runs; prometer "este run" e
-              entregar a lista seria mentir para o usuário. */}
-          {run.portalUrlIsFallback ? 'Abrir runs no portal' : 'Abrir run no portal'}
+          {/* No Standard o portal só tem o histórico do workflow; prometer
+              "este run" e entregar a lista seria mentir para o usuário. */}
+          {run.portalUrlIsFallback ? 'Abrir histórico no portal' : 'Abrir run no portal'}
         </button>
         <button
           type="button"

@@ -1,4 +1,5 @@
-import type { WorkflowRun } from '../shared/types.js'
+import type { WorkflowLinkContext, WorkflowRun } from '../shared/types.js'
+import { regionDisplayName } from './azure/regions.js'
 
 /**
  * Construção de deep links para o portal do Azure.
@@ -37,11 +38,64 @@ function directoryPrefix(tenantId: string | undefined): string {
 }
 
 /**
- * Lista de runs de um workflow. Formato estável e documentado.
- * Usado como fallback e como destino para Standard quando o run não resolve.
+ * Histórico de runs de um workflow Standard.
+ *
+ * Formato confirmado a partir de uma URL real copiada do portal — é a
+ * WorkflowMenuBlade da extensão EMA, e NÃO o `#@tenant/resource{id}/runs`
+ * que usávamos antes (esse não abre o histórico de um workflow Standard).
+ *
+ * Estrutura:
+ *   #view/Microsoft_Azure_EMA/WorkflowMenuBlade/~/runHistory
+ *     /resourceId/{resourceId totalmente URL-encoded}
+ *     /location/{nome de exibição, ex.: "Central US"}
+ *     /isReadOnly~/false /kind/{Stateful|Stateless}
+ *     /defaultBlade/designer /isCodeful~/false
+ *
+ * O resourceId vai encodado como UM segmento (as barras viram %2F), por isso
+ * `encodeURIComponent` e não template string crua.
  */
-export function buildRunsListUrl(workflowResourceId: string, tenantId?: string): string {
+export function buildStandardRunHistoryUrl(workflow: WorkflowLinkContext): string {
+  const resourceId = encodeURIComponent(workflow.resourceId)
+  const location = encodeURIComponent(regionDisplayName(workflow.location))
+  const kind = workflow.statefulness ?? 'Stateful'
+
+  return (
+    `${PORTAL_ORIGIN}/#view/Microsoft_Azure_EMA/WorkflowMenuBlade/~/runHistory` +
+    `/resourceId/${resourceId}` +
+    `/location/${location}` +
+    `/isReadOnly~/false` +
+    `/kind/${kind}` +
+    `/defaultBlade/designer` +
+    `/isCodeful~/false`
+  )
+}
+
+/**
+ * Lista de runs de um workflow Consumption.
+ *
+ * Aqui o workflow é um recurso de primeira classe, então a blade genérica de
+ * recurso funciona. Formato estável.
+ */
+export function buildConsumptionRunsListUrl(
+  workflowResourceId: string,
+  tenantId?: string,
+): string {
   return `${PORTAL_ORIGIN}/${directoryPrefix(tenantId)}/resource${workflowResourceId}/runs`
+}
+
+/**
+ * Histórico de runs, escolhendo o formato conforme o sabor do Logic App.
+ *
+ * Os dois são caminhos completamente diferentes no portal — não é detalhe de
+ * template, é outra extensão.
+ */
+export function buildRunsListUrl(
+  workflow: WorkflowLinkContext,
+  tenantId?: string,
+): string {
+  return workflow.kind === 'standard'
+    ? buildStandardRunHistoryUrl(workflow)
+    : buildConsumptionRunsListUrl(workflow.resourceId, tenantId)
 }
 
 /**
@@ -66,47 +120,31 @@ function buildConsumptionRunUrl(run: WorkflowRun, tenantId?: string): string {
 }
 
 /**
- * Standard: propositalmente cai na LISTA de runs do workflow, não no run.
+ * Melhor link disponível para um run.
  *
- * Verificado contra um tenant real: o recurso do workflow existe no ARM
- * (`Microsoft.Web/sites/workflows`), mas o run como sub-resource devolve 404
- * — no Standard o histórico só existe atrás do runtime do App Service, não
- * no plano de gerenciamento (ver azure/standard.ts).
+ * Consumption tem blade por run (`/rundetails`), então o link é exato.
+ * Standard não: o run não existe como recurso no ARM (404 verificado), e o
+ * portal abre o histórico do workflow — o run procurado fica no topo da
+ * lista. Por isso Standard sempre volta marcado como fallback, e a UI avisa.
  *
- * Como não dá para confirmar um deep link de run que o ARM não reconhece,
- * mandar para a lista de runs é a escolha honesta: sempre funciona, e o run
- * procurado está no topo. Um link inventado que abre 404 seria pior que um
- * clique a mais.
- *
- * Se algum dia o formato da blade for confirmado no portal, é só trocar aqui
- * e devolver `isFallback: false`.
+ * Nunca lança: sem dados para montar o link específico, cai no histórico.
  */
-function buildStandardRunUrl(run: WorkflowRun, tenantId?: string): string {
-  return buildRunsListUrl(run.workflowResourceId, tenantId)
-}
-
-/**
- * Melhor link disponível para um run, com o fallback já embutido.
- *
- * Nunca lança: se algo estiver faltando para montar o link específico,
- * retorna a lista de runs marcada como fallback.
- */
-export function buildPortalLink(run: WorkflowRun, tenantId?: string): PortalLink {
-  const listUrl = buildRunsListUrl(run.workflowResourceId, tenantId)
+export function buildPortalLink(
+  run: WorkflowRun,
+  workflow: WorkflowLinkContext,
+  tenantId?: string,
+): PortalLink {
+  const historyUrl = buildRunsListUrl(workflow, tenantId)
 
   if (!run.runName || !run.workflowResourceId) {
-    return { url: listUrl, isFallback: true }
+    return { url: historyUrl, isFallback: true }
   }
 
   try {
-    if (run.kind === 'standard') {
-      // Marcado como fallback de propósito: a UI mostra o aviso de que o
-      // link abre a lista, e o usuário não é pego de surpresa.
-      return { url: buildStandardRunUrl(run, tenantId), isFallback: true }
-    }
+    if (run.kind === 'standard') return { url: historyUrl, isFallback: true }
     return { url: buildConsumptionRunUrl(run, tenantId), isFallback: false }
   } catch {
-    return { url: listUrl, isFallback: true }
+    return { url: historyUrl, isFallback: true }
   }
 }
 

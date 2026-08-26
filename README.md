@@ -103,7 +103,18 @@ Três coisas só apareceram com dado real e mudaram o código:
 
 **2. O `name` do workflow vem prefixado com o site.** A listagem do ARM devolve `"la-trux/wf-PostPayment"`, enquanto o `id` usa o nome puro (`.../workflows/wf-PostPayment`). Montar URL a partir do `name` quebra; o runtime, por sua vez, já devolve o nome limpo.
 
-**3. O deep link de run no Standard não é confiável.** O recurso do workflow existe no ARM, mas o run como sub-resource dá 404 — então não há como validar um link para a blade do run específico. O app aponta para a **lista de runs** do workflow e marca como fallback; o botão diz "Abrir runs no portal", não "Abrir run". Um link inventado que abre 404 seria pior que um clique a mais.
+**3. O deep link do Standard usa outra extensão do portal.** Não é o `#@tenant/resource{id}/runs` que eu tinha assumido — é a `WorkflowMenuBlade` da extensão `Microsoft_Azure_EMA`, com o resource ID URL-encoded como um único segmento:
+
+```
+#view/Microsoft_Azure_EMA/WorkflowMenuBlade/~/runHistory
+  /resourceId/{resourceId encodado}
+  /location/{nome de exibição, ex.: "Central US"}
+  /isReadOnly~/false/kind/{Stateful|Stateless}/defaultBlade/designer/isCodeful~/false
+```
+
+Dois detalhes que só uma URL real revelou: o `location` usa o **nome de exibição** ("Central US"), não o slug que o ARM devolve ("centralus") — daí `azure/regions.ts`, gerado de `az account list-locations`, porque a conversão não é derivável (tentativa algorítmica acertou 50 de 109 regiões). E o `kind` (Stateful/Stateless) vem do runtime, não do ARM.
+
+O portal não expõe blade por run no Standard, então o link abre o **histórico do workflow** — o run procurado fica no topo. O botão diz "Abrir histórico no portal", não "Abrir run".
 
 Sobre a mensagem de erro: no tenant testado, 69 dos 76 runs falhos trazem o genérico `ActionFailed — "An action failed. No dependent actions succeeded."`. Conferimos que buscar as ações do run (`/runs/{id}/actions`) devolve a mesma mensagem genérica, então a chamada extra não ajudaria. O payload cru fica disponível em "Ver retorno do Azure".
 

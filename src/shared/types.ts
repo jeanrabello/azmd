@@ -55,6 +55,13 @@ export interface WorkflowRef {
   readonly location: string
   /** Só existe em Standard: o nome do App Service que hospeda o workflow. */
   readonly siteName?: string
+  /**
+   * Stateful ou Stateless. Só em Standard.
+   *
+   * Necessário para o deep link: a WorkflowMenuBlade do portal recebe `kind`
+   * como parâmetro de rota.
+   */
+  readonly statefulness?: 'Stateful' | 'Stateless'
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +121,15 @@ export interface FailedRun extends WorkflowRun {
    */
   readonly logicAppId: string
   readonly logicAppName: string
+}
+
+/** Dados do workflow necessários para montar o deep link do portal. */
+export interface WorkflowLinkContext {
+  readonly resourceId: string
+  readonly kind: WorkflowKind
+  /** Slug da região (ex.: 'centralus'). */
+  readonly location: string
+  readonly statefulness?: 'Stateful' | 'Stateless'
 }
 
 /**

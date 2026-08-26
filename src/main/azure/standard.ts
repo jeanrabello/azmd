@@ -42,6 +42,8 @@ const RUNS_PAGE_SIZE = 30
 /** Resposta do runtime ao listar workflows de um site. */
 interface RuntimeWorkflow {
   readonly name?: string
+  /** 'Stateful' ou 'Stateless' — vai no deep link da WorkflowMenuBlade. */
+  readonly kind?: string
 }
 
 interface RuntimeRun {
@@ -61,9 +63,21 @@ export class StandardAdapter implements LogicAppAdapter {
 
   readonly #credential: TokenCredential
   #cachedToken: { value: string; expiresAt: number } | undefined
+  /**
+   * Região por resource ID de site.
+   *
+   * O runtime não devolve a região, mas o deep link do portal exige. Quem
+   * descobre os sites (discovery.ts) a conhece e a registra aqui.
+   */
+  readonly #siteLocations = new Map<string, string>()
 
   constructor(credential: TokenCredential) {
     this.#credential = credential
+  }
+
+  /** Informa a região de um site, para os links do portal saírem corretos. */
+  rememberSiteLocation(siteResourceId: string, location: string): void {
+    this.#siteLocations.set(siteResourceId, location)
   }
 
   /** Token do ARM, reaproveitado até perto de expirar. */
@@ -123,6 +137,9 @@ export class StandardAdapter implements LogicAppAdapter {
       const resourceGroup = resourceGroupFromId(siteResourceId)
       const site = siteNameFromId(siteResourceId)
       if (!subscriptionId || !resourceGroup || !site) continue
+      // A região vem do site (via Resource Graph) — o runtime não a informa,
+      // e o deep link do portal precisa dela.
+      const location = this.#siteLocations.get(siteResourceId) ?? 'unknown'
 
       const base = this.#runtimeBase({ subscriptionId, resourceGroup, site })
       const payload = await this.#get(`${base}/workflows?api-version=${API_VERSION}`)
@@ -140,8 +157,11 @@ export class StandardAdapter implements LogicAppAdapter {
           kind: 'standard',
           subscriptionId,
           resourceGroup,
-          location: 'unknown',
+          location,
           siteName: site,
+          ...(item.kind === 'Stateful' || item.kind === 'Stateless'
+            ? { statefulness: item.kind }
+            : {}),
         })
       }
     }
