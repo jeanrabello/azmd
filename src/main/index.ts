@@ -23,6 +23,18 @@ import {
  * duas superfícies que o exibem (tray e renderer).
  */
 
+/*
+ * Identidade do app para o Windows (AppUserModelID).
+ *
+ * O Action Center só mostra um banner de app cujo AUMID ele reconheça. Sem
+ * isto as notificações são descartadas em silêncio no `npm run dev` — o
+ * processo se identifica como `electron.app.Electron` — e no app instalado o
+ * banner sai sem o nome/ícone certos. Precisa casar com o `appId` do
+ * electron-builder e vir antes de qualquer `new Notification`.
+ * No macOS a chamada é no-op.
+ */
+app.setAppUserModelId('com.jeanrabello.azmd')
+
 // Duas instâncias competiriam pelo mesmo ícone e duplicariam notificações.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -60,9 +72,11 @@ function syncLoginItem(desired: boolean): void {
 /**
  * Conserta o PATH para o modo Azure CLI, e só para ele.
  *
- * Aberto pela GUI, o app recebe só /usr/bin:/bin:/usr/sbin:/sbin — sem
- * /opt/homebrew/bin, onde o `az` costuma estar. Sem este reparo o modo CLI
- * falha com "Azure CLI could not be found" mesmo com `az login` feito.
+ * Aberto pela GUI no macOS, o app recebe só /usr/bin:/bin:/usr/sbin:/sbin —
+ * sem /opt/homebrew/bin, onde o `az` costuma estar. Sem este reparo o modo CLI
+ * falha com "Azure CLI could not be found" mesmo com `az login` feito. No
+ * Windows o PATH da GUI já é o mesmo do terminal, e o reparo só acrescenta os
+ * diretórios conhecidos de instalação da CLI.
  *
  * Condicional ao modo porque em Device Code e Service Principal o `az` é
  * irrelevante: avisar que ele falta seria apontar para um problema que o

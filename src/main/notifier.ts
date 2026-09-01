@@ -14,6 +14,21 @@ import type { FailedRun } from '../shared/types.js'
 
 const MAX_INDIVIDUAL_NOTIFICATIONS = 3
 
+/**
+ * `subtitle` só existe no macOS: no Windows e no Linux o campo é ignorado em
+ * silêncio. Como é ele que diz *em qual Logic App* a falha aconteceu — o mesmo
+ * 'notifica-cliente' existe em prd e dev —, fora do macOS a informação tem que
+ * descer para o corpo, ou o banner fica ambíguo.
+ */
+const SUPPORTS_SUBTITLE = process.platform === 'darwin'
+
+/** Distribui contexto e mensagem entre `subtitle` e `body` conforme a plataforma. */
+function withContext(context: string | undefined, body: string): { subtitle?: string; body: string } {
+  if (!context) return { body }
+  if (SUPPORTS_SUBTITLE) return { subtitle: context, body }
+  return { body: `${context} — ${body}` }
+}
+
 export interface NotifierOptions {
   /** Chamado quando o usuário clica na notificação. */
   readonly onActivate: (run: FailedRun) => void
@@ -66,8 +81,10 @@ export class Notifier {
 
     const notification = new Notification({
       title: 'azmd is watching',
-      subtitle: 'Test notification',
-      body: 'If you can see this, failure alerts will get through.',
+      ...withContext(
+        'Test notification',
+        'If you can see this, failure alerts will get through.',
+      ),
       silent: false,
     })
     notification.on('click', () => this.#onActivateSummary?.())
@@ -79,9 +96,8 @@ export class Notifier {
     const notification = new Notification({
       title: `${run.workflowName} failed`,
       // Com muitos Logic Apps, o nome do workflow sozinho é ambíguo: o mesmo
-      // 'notifica-cliente' existe em prd e dev. O subtítulo diz onde foi.
-      subtitle: run.logicAppName,
-      body: run.error?.message ?? 'Run ended with status Failed',
+      // 'notifica-cliente' existe em prd e dev. O Logic App diz onde foi.
+      ...withContext(run.logicAppName, run.error?.message ?? 'Run ended with status Failed'),
       silent: false,
     })
     notification.on('click', () => this.#onActivate(run))
