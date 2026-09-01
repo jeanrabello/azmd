@@ -18,6 +18,21 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings(undefined)).toEqual(DEFAULT_SETTINGS)
   })
 
+  /* O tema veio do disco ou de um patch do renderer: qualquer string precisa
+   * cair no padrão em vez de virar um data-theme inválido no <html>. */
+  it('aceita só os temas conhecidos', () => {
+    expect(sanitizeSettings({ theme: 'light' }).theme).toBe('light')
+    expect(sanitizeSettings({ theme: 'dark' }).theme).toBe('dark')
+    expect(sanitizeSettings({ theme: 'system' }).theme).toBe('system')
+  })
+
+  it('cai no padrão quando o tema é inválido', () => {
+    expect(sanitizeSettings({ theme: 'roxo' }).theme).toBe(DEFAULT_SETTINGS.theme)
+    expect(sanitizeSettings({ theme: 42 }).theme).toBe(DEFAULT_SETTINGS.theme)
+    expect(sanitizeSettings({ theme: null }).theme).toBe(DEFAULT_SETTINGS.theme)
+    expect(sanitizeSettings({}).theme).toBe(DEFAULT_SETTINGS.theme)
+  })
+
   it('limita o intervalo de polling aos limites', () => {
     expect(sanitizeSettings({ pollIntervalSeconds: 1 }).pollIntervalSeconds).toBe(
       POLL_INTERVAL_BOUNDS.min,

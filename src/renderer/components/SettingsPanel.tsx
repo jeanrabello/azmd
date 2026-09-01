@@ -5,6 +5,7 @@ import type {
   AuthMode,
   DataSourceMode,
   Settings,
+  Theme,
 } from '../../shared/types.js'
 import { LOOKBACK_BOUNDS, POLL_INTERVAL_BOUNDS } from '../../shared/types.js'
 
@@ -15,6 +16,12 @@ interface SettingsPanelProps {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+const THEME_LABELS: Readonly<Record<Theme, string>> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
 }
 
 const AUTH_MODE_LABELS: Readonly<Record<AuthMode, string>> = {
@@ -446,6 +453,28 @@ export default function SettingsPanel({ settings, onBack }: SettingsPanelProps):
           value={settings.lookbackHours}
           onChange={handleLookbackChange}
         />
+      </section>
+
+      <section className="settings-section">
+        <h2 className="settings-section__title">Appearance</h2>
+        <div className="mode-toggle" role="group" aria-label="Theme">
+          {(Object.keys(THEME_LABELS) as readonly Theme[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`mode-toggle__option ${settings.theme === option ? 'mode-toggle__option--active' : ''}`}
+              onClick={() => patch({ theme: option })}
+              aria-pressed={settings.theme === option}
+            >
+              {THEME_LABELS[option]}
+            </button>
+          ))}
+        </div>
+        <p className="settings-caption">
+          {settings.theme === 'system'
+            ? 'Follows your operating system.'
+            : 'Also sets the tray icon, which some systems do not recolor automatically.'}
+        </p>
       </section>
 
       <section className="settings-section">

@@ -11,6 +11,7 @@ import {
   type DataSourceMode,
   type Scope,
   type Settings,
+  type Theme,
   type WatchSelection,
 } from '../shared/types.js'
 
@@ -74,11 +75,13 @@ export function sanitizeSettings(input: unknown, base: Settings = DEFAULT_SETTIN
         : base.notificationsEnabled,
     launchAtLogin:
       typeof raw['launchAtLogin'] === 'boolean' ? raw['launchAtLogin'] : base.launchAtLogin,
+    theme: THEMES.includes(raw['theme'] as Theme) ? (raw['theme'] as Theme) : base.theme,
     ...(tenantId ? { tenantId } : {}),
   }
 }
 
 const AUTH_MODES: readonly AuthMode[] = ['deviceCode', 'servicePrincipal', 'azureCli']
+const THEMES: readonly Theme[] = ['system', 'light', 'dark']
 
 /** Só o que for string não-vazia interessa; '' equivale a ausente. */
 function nonEmptyString(value: unknown): string | undefined {

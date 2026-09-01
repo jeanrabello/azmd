@@ -1,0 +1,28 @@
+name: CI
+
+# Verificação de pull request.
+#
+# Separado do Release de propósito: aqui só interessa saber se o código está
+# são, e rodar a matriz de empacotamento (dois runners, ~10 min) a cada push de
+# PR seria caro sem responder nada que estes três comandos já não respondam.
+# O Release continua sendo o que builda e publica, ao entrar na main.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
