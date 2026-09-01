@@ -16,8 +16,10 @@ The app starts **in demo mode**, with mocked data. It lives in the menu bar / sy
 |---|---|
 | `npm run dev` | Development with HMR in the renderer |
 | `npm run build` | Typecheck + bundle main, preload and renderer |
-| `npm test` | Test suite (vitest) |
+| `npm test` | Test suite — 150 tests across 12 files (vitest) |
+| `npm run test:watch` | Test suite in watch mode |
 | `npm run typecheck` | Type-checking only |
+| `npm start` | Serves the last build (`electron-vite preview`) |
 | `npm run pack:mac` | Builds .dmg/.zip into `release/` (ad-hoc signed — see Distribution) |
 | `npm run pack:win` | Builds an NSIS x64 installer into `release/` |
 | `npm run pack:all` | Builds installers for both macOS and Windows |
@@ -43,7 +45,7 @@ Logic Apps  →  app's workflows  →  failed runs  →  run detail
 
 **Choosing what to watch.** The eye icon on each row toggles monitoring, for a whole Logic App or a single workflow. Anything not watched doesn't notify, doesn't count toward totals, and **isn't queried** — the poller filters before the call goes out, so ignoring something actually saves ARM quota.
 
-If enough apps get muted, a banner at the top of the list reports how many and offers **Unmute all** — without it, muting everything produced a screen identical to "found nothing," and re-enabling one by one wasn't practical.
+If enough apps get muted, a banner at the top of the list reports how many and offers **Reactivate all** — without it, muting everything produced a screen identical to "found nothing," and re-enabling one by one wasn't practical.
 
 Selection is *opt-out*: everything is monitored by default, and what's persisted is the list of what's been ignored. That's deliberate — a new Logic App appearing in Azure should be monitored without requiring action. The opposite would make the app silently stop warning about things that didn't exist when the selection was made, which is the worst way for a monitor to fail. Ignored items stay visible in the list (marked "Not monitored") so they can be re-enabled.
 
@@ -51,7 +53,7 @@ Selection is *opt-out*: everything is monitored by default, and what's persisted
 
 **Run listing** — clicking a row opens the detail screen. Opening in the portal became an explicit button (external-link icon, shown on hover), next to dismiss. That's a deliberate change: the error message in the list is truncated to one line, and sending the user to the browser just to read the reason was too roundabout.
 
-**Details** — full error message (untruncated), error code, timestamps, duration, run name and correlation ID. When Azure returns a payload the normalization doesn't cover, a "View raw Azure response" link shows the raw JSON.
+**Details** — full error message (untruncated), error code, timestamps, duration, run name and correlation ID. When Azure returns a payload the normalization doesn't cover, a "View Azure response" link shows the raw JSON.
 
 The screen also lists the **workflow's last 5 runs, successes and failures alike**. Successes are included on purpose: three failures in a row tells a different story than one failure between successes, and the main list doesn't show that. This data comes from what the poller already collected — opening the details doesn't trigger a new call to Azure.
 
@@ -67,6 +69,7 @@ src/
 │  ├─ notifier.ts         # native notifications + aggregation
 │  ├─ tray.ts             # template icon + anchored popover
 │  ├─ portal-url.ts       # deep links (see Known caveats)
+│  ├─ grouping.ts         # Standard by App Service, Consumption by resource group
 │  ├─ settings-store.ts   # preferences, sanitized at the boundary
 │  ├─ safe-open.ts        # single choke point for opening external URLs (allowlist)
 │  ├─ auth/               # credential chain, token cache, encrypted secret storage
@@ -76,6 +79,8 @@ src/
 │     ├─ standard.ts      # @azure/arm-appservice
 │     ├─ discovery.ts     # Resource Graph
 │     ├─ discovered.ts    # real adapters + Resource Graph inventory
+│     ├─ run-error.ts     # normalizes Azure's error shapes, keeps the raw payload
+│     ├─ regions.ts       # slug -> display name, for the Standard deep link
 │     └─ demo.ts          # mocks
 ├─ preload/index.ts       # contextBridge, minimal contract
 └─ renderer/              # React; knows nothing about Azure
@@ -116,17 +121,17 @@ Two details only a real URL revealed: `location` uses the **display name** ("Cen
 
 The portal doesn't expose a per-run blade for Standard, so the link opens the **workflow's run history** — the run you're looking for is at the top. The button reads "Open history in portal," not "Open run."
 
-On error messages: in the tested tenant, 69 of 76 failed runs carry the generic `ActionFailed — "An action failed. No dependent actions succeeded."` We confirmed that fetching the run's actions (`/runs/{id}/actions`) returns the same generic message, so the extra call wouldn't help. The raw payload is available via "View raw Azure response."
+On error messages: in the tested tenant, 69 of 76 failed runs carry the generic `ActionFailed — "An action failed. No dependent actions succeeded."` We confirmed that fetching the run's actions (`/runs/{id}/actions`) returns the same generic message, so the extra call wouldn't help. The raw payload is available via "View Azure response."
 
 ## Known caveats
 
 **The specific-run deep link hasn't been validated against the portal.** Confirming it requires opening a real failed run in the portal, copying the URL, and comparing it against the derived template — that session wasn't available during testing. What exists today:
 
 - The **run list** URL uses the stable, documented format — that part is reliable.
-- The **specific-run** URL follows a format derived from the resource ID, and is isolated in two functions at the top of `portal-url.ts`, flagged with a `VALIDATE` comment. If the format turns out to be wrong, the fix is contained to those lines.
+- The **specific-run** URL follows a format derived from the resource ID, and is isolated in the `*_RUN_TEMPLATE` constants in `portal-url.ts`, under the maintenance warning at the top of the file. If the format turns out to be wrong, the fix is contained to those lines.
 - There's a fallback: any failure while building the URL falls back to the workflow's run list, never a 404.
 
-**Error-message extraction is the part most likely to need adjustment.** The SDK types `WorkflowRun.error` as `any`, and the shape varies in practice (flat, nested under `error.error`, with the reason only in `details[]`, or a bare string). `azure/run-error.ts` tries the known shapes in order and always keeps the raw payload — so even if normalization gets it wrong, "View raw Azure response" shows what actually came back. If a new shape shows up, that's where it gets added, and there are tests covering each case.
+**Error-message extraction is the part most likely to need adjustment.** The SDK types `WorkflowRun.error` as `any`, and the shape varies in practice (flat, nested under `error.error`, with the reason only in `details[]`, or a bare string). `azure/run-error.ts` tries the known shapes in order and always keeps the raw payload — so even if normalization gets it wrong, "View Azure response" shows what actually came back. If a new shape shows up, that's where it gets added, and there are tests covering each case.
 
 **The Consumption path is still unvalidated against real data.** The tested tenant only has Standard Logic Apps, so `consumption.ts` and the resource-group grouping have never been exercised against real data — they're covered only by types and tests so far.
 

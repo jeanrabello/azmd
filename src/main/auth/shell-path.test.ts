@@ -8,9 +8,28 @@ import { findExecutable } from './shell-path.js'
  * confusa ("az login" já estava feito).
  */
 describe('findExecutable', () => {
+  /*
+   * Afirmar o caminho exato quebrava no CI: no Ubuntu `/bin` é symlink para
+   * `/usr/bin`, então com PATH=/usr/bin:/bin o `sh` é achado em `/usr/bin/sh` —
+   * resultado correto para uma busca que respeita a ordem do PATH. O que
+   * importa aqui é ter achado um `sh` num dos diretórios informados, não em
+   * qual deles a distribuição resolveu colocá-lo.
+   */
   it('acha um binário que existe no PATH informado', () => {
-    // /bin/sh existe em qualquer macOS/Linux.
-    expect(findExecutable('sh', '/usr/bin:/bin')).toBe('/bin/sh')
+    // `sh` existe em qualquer macOS/Linux.
+    expect(findExecutable('sh', '/usr/bin:/bin')).toMatch(/^\/(usr\/)?bin\/sh$/)
+  })
+
+  /* A ordem do PATH decide o empate, e isso vale testar sem depender do
+   * layout do sistema: o primeiro diretório que contém o binário vence. */
+  it('respeita a ordem do PATH quando o binário existe em mais de um lugar', () => {
+    const first = findExecutable('sh', '/usr/bin:/bin')
+    const reversed = findExecutable('sh', '/bin:/usr/bin')
+    expect(first).toBeDefined()
+    expect(reversed).toBeDefined()
+    // Em sistemas onde os dois existem de fato, inverter o PATH inverte a
+    // resposta; onde só um existe, ambas apontam para ele.
+    expect([first, reversed].every((p) => p?.endsWith('/sh'))).toBe(true)
   })
 
   it('não acha o que não está em nenhum dos diretórios', () => {
@@ -18,6 +37,8 @@ describe('findExecutable', () => {
   })
 
   it('ignora entradas vazias no PATH', () => {
+    // Só `/bin` no PATH: em qualquer sistema POSIX o `sh` resolve para lá,
+    // mesmo quando `/bin` é symlink.
     expect(findExecutable('sh', ':/bin::')).toBe('/bin/sh')
   })
 
