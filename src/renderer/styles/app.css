@@ -33,6 +33,9 @@
   --color-input-track: rgba(0, 0, 0, 0.12);
   --color-scrollbar: rgba(0, 0, 0, 0.22);
 
+  /* Fundo do popover em plataformas sem vibrancy (Windows/Linux). */
+  --color-window-bg: #f6f6f6;
+
   --radius-row: 6px;
   --radius-control: 6px;
 
@@ -63,6 +66,8 @@
 
     --color-input-track: rgba(255, 255, 255, 0.18);
     --color-scrollbar: rgba(255, 255, 255, 0.28);
+
+    --color-window-bg: #1e1e1e;
   }
 }
 
@@ -91,6 +96,42 @@
   --color-scrollbar: rgba(255, 255, 255, 0.28);
 }
 
+/* Tema claro explícito.
+ *
+ * Precisa repetir a paleta de :root em vez de só confiar nela: num sistema em
+ * modo escuro, a media query acima já teria trocado os tokens, e sem este bloco
+ * escolher "Light" não teria efeito nenhum. A especificidade de
+ * `:root[data-theme]` é o que garante a vitória nos dois sentidos. */
+:root[data-theme='light'] {
+  --color-label: rgba(0, 0, 0, 0.85);
+  --color-label-secondary: rgba(0, 0, 0, 0.5);
+  --color-label-tertiary: rgba(0, 0, 0, 0.32);
+  --color-separator: rgba(0, 0, 0, 0.1);
+  --color-fill-hover: rgba(0, 0, 0, 0.05);
+  --color-accent: #0a84ff;
+  --color-accent-fill: rgba(10, 132, 255, 0.16);
+  --color-accent-label: #ffffff;
+
+  --color-success: #28a745;
+  --color-error: #ff3b30;
+  --color-warning: #ff9f0a;
+  --color-idle: rgba(0, 0, 0, 0.28);
+
+  --color-badge-bg: rgba(0, 0, 0, 0.06);
+  --color-demo-bg: #ff9f0a;
+  --color-demo-label: #1a1200;
+
+  --color-input-track: rgba(0, 0, 0, 0.12);
+  --color-scrollbar: rgba(0, 0, 0, 0.22);
+
+  /* Fundo opaco para plataformas sem vibrancy — ver a regra de body abaixo. */
+  --color-window-bg: #f6f6f6;
+}
+
+:root[data-theme='dark'] {
+  --color-window-bg: #1e1e1e;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -106,6 +147,29 @@ body {
    * fundo. Qualquer background opaco aqui quebra o efeito nativo. */
   background: transparent;
   overflow: hidden;
+}
+
+/* Vibrancy só existe no macOS. Em Windows e Linux o fundo transparente
+ * deixaria o popover sem cor de fundo nenhuma, então pintamos um sólido — a
+ * classe vem do próprio main, que sabe em que plataforma está. */
+html.platform-other,
+html.platform-other body {
+  background: var(--color-window-bg, #f6f6f6);
+}
+
+/* Tema escuro pinta o próprio fundo.
+ *
+ * A vibrancy do macOS é desenhada pelo AppKit atrás da janela transparente, e
+ * o que ela pinta não é o nosso CSS. Com os tokens escuros ativos, contar com
+ * ela dava texto claro sobre um fundo que podia estar claro — ilegível. Trocar
+ * o blur por um sólido é o certo aqui: um efeito a menos vale mais que um
+ * popover que não se lê.
+ *
+ * O tema claro segue transparente e mantém a vibrancy, que é o visual nativo
+ * e o comportamento que o app sempre teve. */
+:root[data-theme='dark'],
+:root[data-theme='dark'] body {
+  background: var(--color-window-bg);
 }
 
 body {

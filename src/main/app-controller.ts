@@ -10,6 +10,7 @@ import {
   type CredentialInput,
 } from './auth/credential.js'
 import { clearTokenCache } from './auth/token-cache-store.js'
+import { resolveTheme } from './theme.js'
 import { AuthRecordStore } from './auth/auth-record-store.js'
 import { SecretStore } from './auth/secret-store.js'
 import { Poller, classifyError } from './poller.js'
@@ -177,12 +178,14 @@ export class AppController {
   // -------------------------------------------------------------------------
 
   getState(): AppState {
+    const settings = this.#settings.get()
     return {
       runs: this.#runs,
       logicApps: this.#logicApps,
       workflows: this.#workflowSummaries,
       connection: this.#connection,
-      settings: this.#settings.get(),
+      settings,
+      resolvedTheme: resolveTheme(settings.theme),
     }
   }
 

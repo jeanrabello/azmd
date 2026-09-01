@@ -29,6 +29,10 @@ export class TrayController {
   #tray: Tray | undefined
   #window: BrowserWindow | undefined
   readonly #options: TrayControllerOptions
+  /** Tema em vigor; decide a variante do ícone fora do macOS. */
+  #theme: 'light' | 'dark' = 'light'
+  /** Último status pintado, para repintar ao trocar de tema sem novo estado. */
+  #lastStatus: IconStatus = 'idle'
 
   constructor(options: TrayControllerOptions) {
     this.#options = options
@@ -127,6 +131,8 @@ export class TrayController {
     const status: IconStatus =
       state.connection.kind === 'error' ? 'error' : failureCount > 0 ? 'alert' : 'idle'
 
+    this.#theme = state.resolvedTheme
+    this.#lastStatus = status
     tray.setImage(this.#buildIcon(status))
     tray.setToolTip(describeState(state))
     // O badge de título mantém a contagem visível sem abrir o popover. Só
@@ -137,16 +143,52 @@ export class TrayController {
     }
   }
 
+  /**
+   * Escolhe o ícone da bandeja.
+   *
+   * NO macOS o template image resolve tudo: o sistema recolore o glifo conforme
+   * o tema da barra, então um arquivo só serve para claro e escuro.
+   *
+   * NO WINDOWS não há recoloração. O glifo preto original ficava quase
+   * invisível na barra escura padrão do Windows 11 — o bug que motivou este
+   * código. Aqui a variante é escolhida pelo tema resolvido, e a lógica é
+   * invertida de propósito: tema ESCURO pede glifo CLARO, porque o que importa
+   * é o contraste contra a barra, não combinar com ela.
+   */
   #buildIcon(status: IconStatus): Electron.NativeImage {
-    const file = `iconTemplate${status === 'idle' ? '' : `-${status}`}.png`
-    const image = nativeImage.createFromPath(join(this.#iconDir(), file))
-    if (image.isEmpty()) return this.#fallbackIcon()
-    // Template image é convenção do macOS: o sistema recolore o ícone conforme
-    // o tema da barra. No Windows não existe equivalente, e marcar a imagem
-    // como template deixaria o ícone invisível na bandeja — o PNG é
-    // monocromático com alpha, então sem a recoloração não sobra nada visível.
-    if (process.platform === 'darwin') image.setTemplateImage(true)
+    const suffix = status === 'idle' ? '' : `-${status}`
+
+    if (process.platform === 'darwin') {
+      const image = nativeImage.createFromPath(join(this.#iconDir(), `iconTemplate${suffix}.png`))
+      if (image.isEmpty()) return this.#fallbackIcon()
+      image.setTemplateImage(true)
+      return image
+    }
+
+    const variant = this.#theme === 'dark' ? 'light' : 'dark'
+    const image = nativeImage.createFromPath(
+      join(this.#iconDir(), `icon-${variant}${suffix}.png`),
+    )
+    // Fallback para o arquivo antigo: se um build sair sem os assets novos, um
+    // ícone com pouco contraste ainda é melhor que bandeja vazia.
+    if (image.isEmpty()) {
+      const legacy = nativeImage.createFromPath(join(this.#iconDir(), `iconTemplate${suffix}.png`))
+      return legacy.isEmpty() ? this.#fallbackIcon() : legacy
+    }
     return image
+  }
+
+  /**
+   * Guarda o tema para o próximo `#buildIcon`.
+   *
+   * Só repinta quando muda de verdade: `setImage` a cada ciclo de polling seria
+   * trabalho à toa numa bandeja que não mudou de aparência.
+   */
+  setTheme(theme: 'light' | 'dark'): void {
+    if (this.#theme === theme) return
+    this.#theme = theme
+    const tray = this.#tray
+    if (tray) tray.setImage(this.#buildIcon(this.#lastStatus))
   }
 
   #iconDir(): string {

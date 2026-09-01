@@ -63,6 +63,19 @@ export default function App(): React.JSX.Element {
     if (viewTargetMissing) setView({ kind: 'logicApps' })
   }, [viewTargetMissing])
 
+  /*
+   * O tema vem resolvido do main, não do `prefers-color-scheme`.
+   *
+   * Marcá-lo no <html> faz o CSS usar os tokens certos mesmo quando o usuário
+   * força claro num sistema escuro — a media query sozinha ignoraria a
+   * preferência. O atributo é sempre explícito ('light' ou 'dark'), então as
+   * regras `:root[data-theme=...]` vencem a media query nos dois sentidos.
+   */
+  const resolvedTheme = state?.resolvedTheme
+  useEffect(() => {
+    if (resolvedTheme) document.documentElement.dataset['theme'] = resolvedTheme
+  }, [resolvedTheme])
+
   if (!state) {
     // Ainda não recebemos o primeiro snapshot — evita piscar um estado vazio.
     return (

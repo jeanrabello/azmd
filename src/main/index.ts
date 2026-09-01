@@ -5,6 +5,7 @@ import { Notifier } from './notifier.js'
 import { TrayController } from './tray.js'
 import { openDeviceLoginUrl, openPortalUrl } from './safe-open.js'
 import { ensureCliPath } from './auth/shell-path.js'
+import { applyThemeSource } from './theme.js'
 import { SettingsStore } from './settings-store.js'
 import {
   IPC,
@@ -106,6 +107,11 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
     const updated = ctrl.updateSettings(patch)
     syncLoginItem(updated.launchAtLogin)
     notifier?.setEnabled(updated.notificationsEnabled)
+    // Antes do broadcast: `themeSource` muda `shouldUseDarkColors`, que é o que
+    // o controller lê para resolver o tema. Aplicar depois emitiria um estado
+    // com o tema antigo e a UI piscaria no valor errado por um frame.
+    applyThemeSource(updated.theme)
+    trayCtrl.updateFromState(ctrl.getState())
     return updated
   })
 
@@ -227,12 +233,18 @@ void app.whenReady().then(async () => {
 
   notifier.setEnabled(controller.getSettings().notificationsEnabled)
   syncLoginItem(controller.getSettings().launchAtLogin)
+  applyThemeSource(controller.getSettings().theme)
 
   registerIpc(controller, tray)
 
-  // Trocar claro/escuro deve repintar o popover imediatamente.
+  // Trocar claro/escuro deve repintar o popover e o ícone imediatamente. Só
+  // dispara quando a preferência é 'system'; com tema fixo o `themeSource` já
+  // impede o evento de mudar o resultado.
   nativeTheme.on('updated', () => {
-    if (controller) broadcastState(controller.getState())
+    if (!controller) return
+    const state = controller.getState()
+    broadcastState(state)
+    tray?.updateFromState(state)
   })
 
   controller.start()

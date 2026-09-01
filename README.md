@@ -88,6 +88,14 @@ src/
 
 The renderer never sees a credential, an SDK, or an unvalidated URL. It receives a ready-made `AppState` and returns intents (`openRunInPortal(runId)`), never actions.
 
+## Theme
+
+**Settings → Appearance** offers System, Light and Dark. System is the default and follows the OS.
+
+The setting drives the tray icon as well, and that is the reason it exists rather than being pure preference. On macOS the icon is a template image and the system recolors it for the menu bar; Windows has no such mechanism, so a dark glyph on the default dark taskbar was nearly invisible. The theme decides which glyph ships — a dark theme gets the light icon, because what matters is contrast against the bar, not matching it.
+
+Dark mode paints its own window background. The macOS vibrancy effect is drawn by AppKit behind a transparent window and does not follow the app's CSS, so keeping the window transparent under a dark palette risked light text over a light backdrop. Light mode stays transparent and keeps the native blur.
+
 ## Security
 
 `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, a restrictive CSP in the renderer. `shell.openExternal` only accepts URLs validated against an allowlist of portal hosts. Authentication secrets (Service Principal client secret, MSAL token cache) are encrypted at rest via Electron's `safeStorage`, which is backed by the OS keychain (Keychain on macOS, DPAPI on Windows).

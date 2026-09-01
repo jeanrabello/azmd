@@ -21,6 +21,7 @@ import {
  * nada nesta ponte devolve credencial ao renderer.
  */
 const api: AzmdAPI = {
+  platform: process.platform,
   getState: () => ipcRenderer.invoke(IPC.getState) as Promise<AppState>,
 
   /**

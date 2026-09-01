@@ -360,6 +360,17 @@ export type AuthFlowState =
   | { readonly kind: 'success'; readonly account: AuthAccount }
   | { readonly kind: 'error'; readonly message: string }
 
+/**
+ * Tema da interface.
+ *
+ * `system` segue o SO — é o padrão e o que a maioria espera. As opções fixas
+ * existem por um motivo concreto além de gosto: no Windows o ícone da bandeja
+ * não é recolorido pelo sistema (ver tray.ts), então o tema também decide se o
+ * glifo é claro ou escuro. Quem tem a barra de tarefas numa cor que o SO não
+ * reporta corretamente precisa poder forçar a variante visível.
+ */
+export type Theme = 'system' | 'light' | 'dark'
+
 export interface Settings {
   /** 'demo' usa dados mockados; 'azure' fala com o ARM de verdade. */
   readonly mode: DataSourceMode
@@ -372,6 +383,8 @@ export interface Settings {
   readonly watch: WatchSelection
   readonly notificationsEnabled: boolean
   readonly launchAtLogin: boolean
+  /** Tema da interface e do ícone da bandeja. Ver Theme. */
+  readonly theme: Theme
   /** Tenant usado ao montar URLs do portal. Opcional — o portal resolve sem ele. */
   readonly tenantId?: string
   /**
@@ -394,6 +407,7 @@ export const DEFAULT_SETTINGS: Settings = {
   watch: EMPTY_WATCH_SELECTION,
   notificationsEnabled: true,
   launchAtLogin: false,
+  theme: 'system',
   auth: DEFAULT_AUTH_CONFIG,
 }
 
@@ -436,6 +450,16 @@ export interface AppState {
   readonly workflows: readonly WorkflowSummary[]
   readonly connection: ConnectionState
   readonly settings: Settings
+  /**
+   * Tema já resolvido para 'light' ou 'dark'.
+   *
+   * O renderer não consegue resolver `theme: 'system'` sozinho de forma
+   * confiável: `prefers-color-scheme` responde pelo Chromium, enquanto quem
+   * manda no popover é o `nativeTheme` do Electron — e é ele que também escolhe
+   * o ícone da bandeja. Resolver num lugar só evita a UI e o ícone
+   * discordarem sobre qual tema está valendo.
+   */
+  readonly resolvedTheme: 'light' | 'dark'
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +467,11 @@ export interface AppState {
 // ---------------------------------------------------------------------------
 
 export interface AzmdAPI {
+  /**
+   * Plataforma do main. Só para decisões de apresentação — o macOS tem
+   * vibrancy e os outros precisam de um fundo opaco (ver app.css).
+   */
+  readonly platform: NodeJS.Platform
   getState(): Promise<AppState>
   onStateChanged(cb: (state: AppState) => void): () => void
   openRunInPortal(runId: string): Promise<void>
