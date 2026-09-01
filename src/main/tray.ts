@@ -16,8 +16,17 @@ import type { AppState } from '../shared/types.js'
 
 const POPOVER_WIDTH = 380
 const POPOVER_HEIGHT = 520
-/** Folga entre a barra e o topo do popover. */
+/** Folga entre a barra e a borda do popover. */
 const WINDOW_GAP = 6
+
+/**
+ * Ignora o clique no ícone que chega logo depois do blur tê-lo escondido.
+ *
+ * No Windows a ordem dos eventos ao clicar no ícone com o popover aberto é
+ * blur → click: o blur esconde, o click veria a janela já invisível e abriria
+ * de novo — deixando o popover impossível de fechar pelo próprio ícone.
+ */
+const REOPEN_GUARD_MS = 250
 
 export interface TrayControllerOptions {
   readonly preloadPath: string
@@ -33,6 +42,8 @@ export class TrayController {
   #theme: 'light' | 'dark' = 'light'
   /** Último status pintado, para repintar ao trocar de tema sem novo estado. */
   #lastStatus: IconStatus = 'idle'
+  /** Quando o blur escondeu a janela pela última vez. Ver REOPEN_GUARD_MS. */
+  #hiddenOnBlurAt = 0
 
   constructor(options: TrayControllerOptions) {
     this.#options = options
@@ -77,7 +88,9 @@ export class TrayController {
 
     // Fechar ao perder o foco é o comportamento nativo de um popover.
     window.on('blur', () => {
-      if (!window.webContents.isDevToolsOpened()) window.hide()
+      if (window.webContents.isDevToolsOpened()) return
+      window.hide()
+      this.#hiddenOnBlurAt = Date.now()
     })
 
     if (this.#options.rendererUrl) {
@@ -95,6 +108,8 @@ export class TrayController {
       window.hide()
       return
     }
+    // Ver REOPEN_GUARD_MS: este clique é o mesmo que acabou de causar o blur.
+    if (Date.now() - this.#hiddenOnBlurAt < REOPEN_GUARD_MS) return
     this.show()
   }
 
@@ -102,24 +117,45 @@ export class TrayController {
     const window = this.#window
     const tray = this.#tray
     if (!window || !tray) return
-    this.#positionUnderTray(window, tray)
+    this.#positionNearTray(window, tray)
     window.show()
     window.focus()
   }
 
-  /** Centraliza sob o ícone, sem deixar sair da tela em monitores laterais. */
-  #positionUnderTray(window: BrowserWindow, tray: Tray): void {
+  /**
+   * Ancora o popover no ícone, sempre dentro da área útil do monitor.
+   *
+   * No macOS a barra fica no topo e o popover desce. No Windows ela fica
+   * embaixo por padrão — descer punha a janela abaixo da borda inferior, e do
+   * popover sobrava uma faixa de poucos pixels. Em vez de assumir um lado,
+   * tentamos abaixo do ícone e caímos para acima quando não cabe; o clamp nos
+   * dois eixos cobre o resto (barra lateral, monitor pequeno, e o ícone dentro
+   * do flyout de ícones ocultos, que fica acima da barra).
+   */
+  #positionNearTray(window: BrowserWindow, tray: Tray): void {
     const trayBounds = tray.getBounds()
-    const windowBounds = window.getBounds()
-    const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y })
+    const { width, height } = window.getBounds()
+    // Bandeja sem bounds conhecidos (acontece em alguns ambientes Linux):
+    // o cursor acabou de clicar no ícone, então ele diz em que monitor estamos.
+    const anchor =
+      trayBounds.width > 0 || trayBounds.height > 0
+        ? { x: trayBounds.x, y: trayBounds.y }
+        : screen.getCursorScreenPoint()
+    const { workArea } = screen.getDisplayNearestPoint(anchor)
 
-    const desiredX = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
-    const minX = display.workArea.x
-    const maxX = display.workArea.x + display.workArea.width - windowBounds.width
-    const x = Math.min(Math.max(desiredX, minX), maxX)
-    const y = Math.round(trayBounds.y + trayBounds.height + WINDOW_GAP)
+    const below = trayBounds.y + trayBounds.height + WINDOW_GAP
+    const above = trayBounds.y - height - WINDOW_GAP
+    const fitsBelow = below + height <= workArea.y + workArea.height
 
-    window.setPosition(x, y, false)
+    window.setPosition(
+      clamp(
+        Math.round(trayBounds.x + trayBounds.width / 2 - width / 2),
+        workArea.x,
+        workArea.x + workArea.width - width,
+      ),
+      clamp(Math.round(fitsBelow ? below : above), workArea.y, workArea.y + workArea.height - height),
+      false,
+    )
   }
 
   /** Reflete o estado no ícone e no tooltip. */
@@ -211,6 +247,12 @@ export class TrayController {
 }
 
 type IconStatus = 'idle' | 'alert' | 'error'
+
+function clamp(value: number, min: number, max: number): number {
+  // Num monitor mais estreito que a janela o `max` cai abaixo do `min`; nesse
+  // caso vale colar na origem da área útil a deixar a janela fora da tela.
+  return Math.max(min, Math.min(value, Math.max(min, max)))
+}
 
 function describeState(state: AppState): string {
   if (state.connection.kind === 'error') return `azmd — ${state.connection.error.message}`
