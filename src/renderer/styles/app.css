@@ -871,6 +871,213 @@ button {
   font-weight: 500;
 }
 
+/* Três modos de auth não cabem lado a lado em 380px sem truncar
+ * "Service Principal", então este grupo empilha em vez de dividir a largura.
+ * O tratamento visual do item ativo continua o mesmo do toggle horizontal. */
+.mode-toggle--stacked {
+  flex-direction: column;
+}
+
+.mode-toggle--stacked .mode-toggle__option {
+  text-align: left;
+}
+
+/* ---------------------------------------------------------------------------
+ * Autenticação
+ * ------------------------------------------------------------------------- */
+
+.auth-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.auth-account {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.auth-account__name {
+  color: var(--color-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.auth-button {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-badge-bg);
+  color: var(--color-label);
+  font-size: 12px;
+  cursor: default;
+}
+
+.auth-button:hover {
+  background: var(--color-fill-hover);
+}
+
+.auth-button:disabled {
+  opacity: 0.45;
+}
+
+.auth-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.auth-button--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-label);
+  font-weight: 500;
+}
+
+.auth-button--primary:hover {
+  background: var(--color-accent);
+  filter: brightness(1.08);
+}
+
+.auth-button--primary:disabled:hover {
+  filter: none;
+}
+
+/* O bloco do device code é o foco da tela enquanto o fluxo está aberto: fundo
+ * de acento próprio para separá-lo do resto das configurações. */
+.auth-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-accent-fill);
+}
+
+.auth-prompt__label {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+/* Monoespaçado, grande e com tracking largo: o código é transcrito à mão em
+ * outra janela, então legibilidade caractere a caractere vale mais que
+ * economia de espaço. `user-select: all` faz um clique selecionar tudo. */
+.auth-prompt__code {
+  margin: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--color-label);
+  user-select: all;
+  cursor: text;
+}
+
+.auth-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.auth-prompt__uri {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  user-select: all;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+/* URL + botão de copiar na mesma linha. O botão não encolhe; a URL, que pode
+ * quebrar em várias linhas, fica com o espaço restante. */
+.auth-prompt__uri-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auth-prompt__uri-row .icon-button {
+  flex: 0 0 auto;
+}
+
+/* Aviso de que o navegador não abriu — some junto com o bloco do código. */
+.auth-prompt__warning {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-warning);
+}
+
+.auth-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+
+.auth-error__message {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+  color: var(--color-label);
+  overflow-wrap: anywhere;
+}
+
+.auth-status {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+/* Campos de texto são novos no painel — até agora só havia range e checkbox,
+ * então não há um estilo de input para herdar. */
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.auth-field__label {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+.auth-field__input {
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-control);
+  background: var(--color-badge-bg);
+  color: var(--color-label);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.auth-field__input::placeholder {
+  color: var(--color-label-tertiary);
+}
+
+.auth-field__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-fill);
+}
+
+.settings-caption code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--color-badge-bg);
+}
+
 .settings-row {
   display: flex;
   align-items: baseline;
@@ -905,6 +1112,18 @@ input[type='range'] {
   accent-color: var(--color-accent);
   width: 13px;
   height: 13px;
+}
+
+/* O teste de notificação fica abaixo do checkbox que ele exercita, recuado
+ * para a mesma coluna do rótulo. */
+.settings-test-button {
+  margin: 4px 0 0 20px;
+}
+
+.settings-hint {
+  margin: 4px 0 0 20px;
+  font-size: 11px;
+  color: var(--color-label-secondary);
 }
 
 /* ---------------------------------------------------------------------------

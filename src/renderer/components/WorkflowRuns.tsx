@@ -23,7 +23,7 @@ export default function WorkflowRuns({
     <section className="details">
       <div className="details__nav">
         <button type="button" className="link-button" onClick={onBack}>
-          ‹ Voltar
+          ‹ Back
         </button>
       </div>
 
@@ -33,7 +33,7 @@ export default function WorkflowRuns({
 
       <div className="details__scroll">
         {runs.length === 0 ? (
-          <p className="details__placeholder">Nenhuma falha neste workflow nas últimas horas</p>
+          <p className="details__placeholder">No failures in this workflow in the last few hours</p>
         ) : (
           <RunList runs={runs} onSelectRun={onSelectRun} hideWorkflowName />
         )}

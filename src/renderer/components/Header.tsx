@@ -27,13 +27,13 @@ function statusModifier(connection: ConnectionState): string {
 function statusLabel(connection: ConnectionState): string {
   switch (connection.kind) {
     case 'ok':
-      return 'Conectado'
+      return 'Connected'
     case 'connecting':
-      return 'Conectando…'
+      return 'Connecting…'
     case 'error':
-      return 'Erro de conexão'
+      return 'Connection error'
     case 'idle':
-      return 'Ocioso'
+      return 'Idle'
   }
 }
 
@@ -82,7 +82,7 @@ export default function Header({
         />
         <h1 className="app-header__title">azmd</h1>
         {settings.mode === 'demo' && (
-          <span className="demo-badge" title="Exibindo dados de exemplo, não dados reais do Azure">
+          <span className="demo-badge" title="Showing sample data, not real Azure data">
             DEMO
           </span>
         )}
@@ -91,8 +91,8 @@ export default function Header({
       <div className="app-header__actions">
         <span className="app-header__updated">
           {lastSyncedAt
-            ? `${connection.kind === 'error' ? 'dados de' : 'atualizado'} ${formatSyncAge(lastSyncedAt)}`
-            : 'sem sincronização ainda'}
+            ? `${connection.kind === 'error' ? 'data from' : 'updated'} ${formatSyncAge(lastSyncedAt)}`
+            : 'not synced yet'}
         </span>
 
         <button
@@ -100,8 +100,8 @@ export default function Header({
           className="icon-button"
           onClick={handleRefresh}
           disabled={refreshing || connection.kind === 'connecting'}
-          aria-label="Atualizar agora"
-          title="Atualizar agora"
+          aria-label="Refresh now"
+          title="Refresh now"
         >
           <RefreshIcon spinning={refreshing || connection.kind === 'connecting'} />
         </button>
@@ -110,9 +110,9 @@ export default function Header({
           type="button"
           className={`icon-button ${settingsOpen ? 'icon-button--active' : ''}`}
           onClick={onToggleSettings}
-          aria-label="Configurações"
+          aria-label="Settings"
           aria-pressed={settingsOpen}
-          title="Configurações"
+          title="Settings"
         >
           <GearIcon />
         </button>

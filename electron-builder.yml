@@ -38,6 +38,24 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.dmg
 
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  # Sem certificado de code signing, o SmartScreen avisa na primeira execução.
+  # Para assinar de verdade: definir CSC_LINK e CSC_KEY_PASSWORD no ambiente.
+
+nsis:
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # O app é um agente de bandeja: um atalho no menu Iniciar basta, e o ícone na
+  # área de trabalho seria ruído para algo que vive na system tray.
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+
 # Sem Developer ID, o electron-builder deixa a assinatura herdada do binário
 # do Electron, cujo identifier é "Electron" — e é esse nome que o macOS mostra
 # em Itens de Início de Sessão. O script reassina ad-hoc com o appId correto.

@@ -15,25 +15,25 @@ function copyFor(error: AppError): ErrorCopy {
   switch (error.kind) {
     case 'auth':
       return {
-        title: 'Não foi possível conectar ao Azure — verifique sua sessão',
-        actionLabel: 'Reconectar',
+        title: 'Could not connect to Azure — check your session',
+        actionLabel: 'Reconnect',
         onAction: () => window.azmd.refreshNow(),
       }
     case 'permission':
       return {
-        title: 'Sua conta não tem permissão (RBAC) para ler estes recursos no Azure',
+        title: 'Your account does not have permission (RBAC) to read these Azure resources',
       }
     case 'throttled':
       return {
-        title: 'Muitas requisições ao Azure — vamos tentar de novo em breve',
+        title: 'Too many requests to Azure — we will try again shortly',
       }
     case 'network':
       return {
-        title: 'Sem conexão — verifique sua rede',
+        title: 'No connection — check your network',
       }
     case 'unknown':
       return {
-        title: error.message || 'Ocorreu um erro inesperado',
+        title: error.message || 'An unexpected error occurred',
       }
   }
 }
@@ -74,7 +74,7 @@ export default function ErrorState({ error }: ErrorStateProps): React.JSX.Elemen
             onClick={() => setShowDetails((v) => !v)}
             aria-expanded={showDetails}
           >
-            {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+            {showDetails ? 'Hide details' : 'Show details'}
           </button>
           {showDetails && <pre className="error-details__content">{error.detail}</pre>}
         </div>

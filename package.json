@@ -18,7 +18,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pack:mac": "npm run build && electron-builder --mac --publish never"
+    "pack:mac": "npm run build && electron-builder --mac --publish never",
+    "pack:win": "npm run build && electron-builder --win --x64 --publish never",
+    "pack:all": "npm run build && electron-builder --mac --win --x64 --publish never"
   },
   "dependencies": {
     "@azure/arm-appservice": "^19.0.0",

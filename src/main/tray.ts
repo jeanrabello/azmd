@@ -129,16 +129,23 @@ export class TrayController {
 
     tray.setImage(this.#buildIcon(status))
     tray.setToolTip(describeState(state))
-    // O badge de título mantém a contagem visível sem abrir o popover.
-    tray.setTitle(failureCount > 0 ? String(failureCount) : '')
+    // O badge de título mantém a contagem visível sem abrir o popover. Só
+    // existe no macOS: `setTitle` é no-op no Windows, onde a contagem fica
+    // apenas no tooltip acima.
+    if (process.platform === 'darwin') {
+      tray.setTitle(failureCount > 0 ? String(failureCount) : '')
+    }
   }
 
   #buildIcon(status: IconStatus): Electron.NativeImage {
     const file = `iconTemplate${status === 'idle' ? '' : `-${status}`}.png`
     const image = nativeImage.createFromPath(join(this.#iconDir(), file))
     if (image.isEmpty()) return this.#fallbackIcon()
-    // Template image: o macOS recolore sozinho conforme o tema da barra.
-    image.setTemplateImage(true)
+    // Template image é convenção do macOS: o sistema recolore o ícone conforme
+    // o tema da barra. No Windows não existe equivalente, e marcar a imagem
+    // como template deixaria o ícone invisível na bandeja — o PNG é
+    // monocromático com alpha, então sem a recoloração não sobra nada visível.
+    if (process.platform === 'darwin') image.setTemplateImage(true)
     return image
   }
 
@@ -151,7 +158,7 @@ export class TrayController {
   /** Evita subir sem ícone nenhum caso o asset falte no bundle. */
   #fallbackIcon(): Electron.NativeImage {
     const image = nativeImage.createEmpty()
-    image.setTemplateImage(true)
+    if (process.platform === 'darwin') image.setTemplateImage(true)
     return image
   }
 
@@ -167,12 +174,12 @@ function describeState(state: AppState): string {
   if (state.connection.kind === 'error') return `azmd — ${state.connection.error.message}`
 
   const runCount = state.runs.length
-  if (runCount === 0) return 'azmd — nenhuma falha'
+  if (runCount === 0) return 'azmd — no failures'
 
   // Com muitos Logic Apps, "12 falhas" não diz se é um app quebrado ou o
   // ambiente inteiro. O número de apps afetados responde isso de relance.
   const failingApps = state.logicApps.filter((app) => app.health === 'failing').length
-  const runs = `${runCount} ${runCount === 1 ? 'falha' : 'falhas'}`
+  const runs = `${runCount} ${runCount === 1 ? 'failure' : 'failures'}`
   if (failingApps <= 1) return `azmd — ${runs}`
-  return `azmd — ${runs} em ${failingApps} Logic Apps`
+  return `azmd — ${runs} across ${failingApps} Logic Apps`
 }

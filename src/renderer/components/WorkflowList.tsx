@@ -23,7 +23,7 @@ export default function WorkflowList({
     <section className="details">
       <div className="details__nav">
         <button type="button" className="link-button" onClick={onBack}>
-          ‹ Voltar
+          ‹ Back
         </button>
       </div>
 
@@ -39,7 +39,7 @@ export default function WorkflowList({
 
       <div className="details__scroll">
         {workflows.length === 0 ? (
-          <p className="details__placeholder">Nenhum workflow neste Logic App</p>
+          <p className="details__placeholder">No workflows in this Logic App</p>
         ) : (
           <ul className="run-list">
             {workflows.map((workflow) => (
@@ -75,7 +75,7 @@ function WorkflowRow({
     void window.azmd.openWorkflowResourceInPortal(resourceId)
   }
 
-  const watchLabel = watched ? 'Parar de monitorar' : 'Voltar a monitorar'
+  const watchLabel = watched ? 'Stop monitoring' : 'Resume monitoring'
 
   return (
     <li className="run-row">
@@ -83,7 +83,7 @@ function WorkflowRow({
         type="button"
         className="run-row__main"
         onClick={handleOpenRuns}
-        aria-label={`Ver falhas de ${workflow.name}`}
+        aria-label={`View failures for ${workflow.name}`}
       >
         <div className="run-row__top">
           <HealthDot health={health} />
@@ -123,8 +123,8 @@ function WorkflowRow({
           type="button"
           className="run-row__action"
           onClick={handleOpenPortal}
-          aria-label={`Abrir ${workflow.name} no portal`}
-          title="Abrir no portal"
+          aria-label={`Open ${workflow.name} in the portal`}
+          title="Open in portal"
         >
           <ExternalLinkIcon />
         </button>
@@ -135,7 +135,7 @@ function WorkflowRow({
 
 /** Só chamada para 'unwatched'/'healthy' — 'failing' usa o pill de contagem em vez de texto. */
 function describeWorkflow(workflow: WorkflowSummary): string {
-  return workflow.health === 'unwatched' ? 'Não monitorado' : 'Sem falhas'
+  return workflow.health === 'unwatched' ? 'Not monitored' : 'No failures'
 }
 
 function HealthDot({ health }: { readonly health: HealthStatus }): React.JSX.Element {

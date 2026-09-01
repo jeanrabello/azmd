@@ -58,15 +58,15 @@ describe('adapters crus com escopo vazio', () => {
 describe('parsing de resource ID do Standard', () => {
   // Formatos observados num tenant real.
   const SITE_ID =
-    '/subscriptions/dd4b9b4c-6ab5-4fa2-bcbd-59c08df49850/resourceGroups/rg-LRSDataLink-shared/providers/Microsoft.Web/sites/la-adevops'
+    '/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-integrations-shared/providers/Microsoft.Web/sites/la-devops'
 
   it('extrai subscription, resource group e nome do site', () => {
-    expect(subscriptionFromId(SITE_ID)).toBe('dd4b9b4c-6ab5-4fa2-bcbd-59c08df49850')
-    expect(siteNameFromId(SITE_ID)).toBe('la-adevops')
+    expect(subscriptionFromId(SITE_ID)).toBe('11111111-2222-3333-4444-555555555555')
+    expect(siteNameFromId(SITE_ID)).toBe('la-devops')
   })
 
   it('extrai o site também a partir do ID de um workflow', () => {
-    expect(siteNameFromId(`${SITE_ID}/workflows/wf-SyncFeature-MondayToADO`)).toBe('la-adevops')
+    expect(siteNameFromId(`${SITE_ID}/workflows/wf-sync-feature`)).toBe('la-devops')
   })
 
   it('devolve undefined para ID que não é de site', () => {

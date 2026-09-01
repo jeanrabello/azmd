@@ -4,3 +4,11 @@ dist/
 release/
 *.log
 .DS_Store
+
+# Cache incremental do TypeScript: recriado a cada build, e versioná-lo só
+# gera conflito em todo merge.
+*.tsbuildinfo
+
+# Planos de implementação: notas de trabalho, não documentação do projeto.
+PLANO.md
+PLANO-AUTH.md

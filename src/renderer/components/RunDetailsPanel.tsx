@@ -42,7 +42,7 @@ export default function RunDetailsPanel({
     return (
       <section className="details">
         <DetailsHeader onBack={onBack} />
-        <p className="details__placeholder">Carregando…</p>
+        <p className="details__placeholder">Loading…</p>
       </section>
     )
   }
@@ -52,7 +52,7 @@ export default function RunDetailsPanel({
       <section className="details">
         <DetailsHeader onBack={onBack} />
         <p className="details__placeholder">
-          Este run não está mais disponível — pode ter sido descartado.
+          This run is no longer available — it may have been dismissed.
         </p>
       </section>
     )
@@ -76,7 +76,7 @@ export default function RunDetailsPanel({
         </header>
 
         <section className="details__section">
-          <h3 className="details__section-title">Erro</h3>
+          <h3 className="details__section-title">Error</h3>
           {run.error ? (
             <>
               {run.error.code !== undefined && (
@@ -88,17 +88,17 @@ export default function RunDetailsPanel({
             </>
           ) : (
             <p className="details__placeholder">
-              O Azure não retornou detalhes de erro para este run.
+              Azure did not return error details for this run.
             </p>
           )}
         </section>
 
         <section className="details__section">
-          <h3 className="details__section-title">Execução</h3>
+          <h3 className="details__section-title">Execution</h3>
           <dl className="details__facts">
-            <Fact label="Início" value={formatAbsolute(run.startTime)} />
-            <Fact label="Fim" value={run.endTime ? formatAbsolute(run.endTime) : '—'} />
-            <Fact label="Duração" value={formatDuration(durationMs)} />
+            <Fact label="Start" value={formatAbsolute(run.startTime)} />
+            <Fact label="End" value={run.endTime ? formatAbsolute(run.endTime) : '—'} />
+            <Fact label="Duration" value={formatDuration(durationMs)} />
             <Fact label="Run" value={run.runName} mono />
             {/* No Standard o clientTrackingId costuma ser igual ao nome do run;
                 repetir o mesmo valor em duas linhas só ocupa espaço. */}
@@ -110,7 +110,7 @@ export default function RunDetailsPanel({
 
         {recentRuns.length > 0 && (
           <section className="details__section">
-            <h3 className="details__section-title">Últimos runs do workflow</h3>
+            <h3 className="details__section-title">Recent workflow runs</h3>
             {/* Sucessos entram junto de propósito: é o que distingue uma falha
                 isolada de um workflow quebrado há horas. */}
             <ul className="history">
@@ -129,20 +129,20 @@ export default function RunDetailsPanel({
           onClick={() => void window.azmd.openRunInPortal(run.runId)}
           title={
             run.portalUrlIsFallback
-              ? 'O portal não expõe blade por run no Standard — abre o histórico, com este no topo'
+              ? 'The portal has no per-run blade on Standard — this opens the history, with this run on top'
               : undefined
           }
         >
           {/* No Standard o portal só tem o histórico do workflow; prometer
               "este run" e entregar a lista seria mentir para o usuário. */}
-          {run.portalUrlIsFallback ? 'Abrir histórico no portal' : 'Abrir run no portal'}
+          {run.portalUrlIsFallback ? 'Open history in portal' : 'Open run in portal'}
         </button>
         <button
           type="button"
           className="details__action"
           onClick={() => void window.azmd.openWorkflowInPortal(run.runId)}
         >
-          Ver workflow
+          View workflow
         </button>
       </footer>
     </section>
@@ -153,7 +153,7 @@ function DetailsHeader({ onBack }: { readonly onBack: () => void }): React.JSX.E
   return (
     <div className="details__nav">
       <button type="button" className="link-button" onClick={onBack}>
-        ‹ Voltar
+        ‹ Back
       </button>
     </div>
   )
@@ -170,7 +170,7 @@ function RawErrorDisclosure({ raw }: { readonly raw: string }): React.JSX.Elemen
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
-        {open ? 'Ocultar retorno do Azure' : 'Ver retorno do Azure'}
+        {open ? 'Hide Azure response' : 'View Azure response'}
       </button>
       {open && <pre className="details__raw-body">{raw}</pre>}
     </div>
@@ -183,7 +183,7 @@ function HistoryRow({ entry }: { readonly entry: WorkflowRunSummary }): React.JS
       <StatusDot status={entry.status} />
       <span className="history__status">{translateStatus(entry.status)}</span>
       <span className="history__time">{formatRelativeTime(entry.startTime)}</span>
-      {entry.isCurrent && <span className="history__current-tag">este</span>}
+      {entry.isCurrent && <span className="history__current-tag">this one</span>}
     </li>
   )
 }
@@ -237,16 +237,16 @@ function statusTone(status: RunStatus): StatusTone {
 
 function translateStatus(status: RunStatus): string {
   const labels: Record<RunStatus, string> = {
-    Succeeded: 'Sucesso',
-    Failed: 'Falhou',
-    Cancelled: 'Cancelado',
-    Running: 'Executando',
-    Waiting: 'Aguardando',
-    Suspended: 'Suspenso',
-    TimedOut: 'Timeout',
-    Skipped: 'Ignorado',
-    Aborted: 'Abortado',
-    Unknown: 'Desconhecido',
+    Succeeded: 'Succeeded',
+    Failed: 'Failed',
+    Cancelled: 'Cancelled',
+    Running: 'Running',
+    Waiting: 'Waiting',
+    Suspended: 'Suspended',
+    TimedOut: 'Timed out',
+    Skipped: 'Skipped',
+    Aborted: 'Aborted',
+    Unknown: 'Unknown',
   }
   return labels[status]
 }
@@ -254,7 +254,7 @@ function translateStatus(status: RunStatus): string {
 function formatAbsolute(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })
+  return date.toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'medium' })
 }
 
 function formatDuration(ms: number | undefined): string {

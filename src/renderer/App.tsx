@@ -67,7 +67,7 @@ export default function App(): React.JSX.Element {
     // Ainda não recebemos o primeiro snapshot — evita piscar um estado vazio.
     return (
       <div className="app app--loading">
-        <div className="loading-indicator" aria-label="Carregando" />
+        <div className="loading-indicator" aria-label="Loading" />
       </div>
     )
   }

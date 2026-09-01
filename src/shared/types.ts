@@ -286,6 +286,80 @@ export const EMPTY_WATCH_SELECTION: WatchSelection = {
 /** De onde vêm os dados. É o toggle central real <-> demo. */
 export type DataSourceMode = 'azure' | 'demo'
 
+// ---------------------------------------------------------------------------
+// Autenticação
+// ---------------------------------------------------------------------------
+
+/**
+ * Como o app obtém token do Azure.
+ *
+ *  - `deviceCode`: o usuário autentica no navegador com a própria conta. Não
+ *    exige CLI instalada nem App Registration — o `@azure/identity` usa por
+ *    padrão o client ID público do Azure CLI, pré-autorizado em qualquer
+ *    tenant. É o padrão do app.
+ *  - `servicePrincipal`: credencial de aplicação (tenant + client + secret),
+ *    digitada nas configurações. Para operação contínua sem interação.
+ *  - `azureCli`: usa a sessão do `az` já presente na máquina. Exige a CLI.
+ */
+export type AuthMode = 'deviceCode' | 'servicePrincipal' | 'azureCli'
+
+/** Conta identificada no último login interativo. */
+export interface AuthAccount {
+  readonly username: string
+  readonly tenantId: string
+}
+
+/**
+ * Configuração de autenticação.
+ *
+ * ATENÇÃO: este tipo trafega para o renderer, então NÃO carrega segredo. O
+ * `clientSecret` mora no Keychain (ver main/auth/secret-store.ts) e aqui só
+ * existe o booleano que diz se há um guardado — nunca o valor.
+ */
+export interface AuthConfig {
+  readonly mode: AuthMode
+  /** Tenant do service principal. Não confundir com `Settings.tenantId`. */
+  readonly tenantId?: string
+  readonly clientId?: string
+  /** true quando há um secret no Keychain. Nunca o secret em si. */
+  readonly hasClientSecret: boolean
+  /** Conta do último login por device code, quando houve. */
+  readonly account?: AuthAccount
+}
+
+export const DEFAULT_AUTH_CONFIG: AuthConfig = {
+  mode: 'deviceCode',
+  hasClientSecret: false,
+}
+
+/**
+ * Patch de auth vindo do renderer.
+ *
+ * Separado de `AuthConfig` porque é o único caminho por onde um segredo entra:
+ * `clientSecret` só existe aqui, no sentido renderer -> main, e nunca volta.
+ * `undefined` significa "não mexer"; string vazia significa "apagar".
+ */
+export interface AuthConfigPatch {
+  readonly mode?: AuthMode
+  readonly tenantId?: string
+  readonly clientId?: string
+  readonly clientSecret?: string
+}
+
+/** Estado do fluxo de device code, para a UI acompanhar o login. */
+export type AuthFlowState =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'starting' }
+  /** Código emitido: a UI mostra `userCode` e o link de verificação. */
+  | {
+      readonly kind: 'prompt'
+      readonly userCode: string
+      readonly verificationUri: string
+      readonly message: string
+    }
+  | { readonly kind: 'success'; readonly account: AuthAccount }
+  | { readonly kind: 'error'; readonly message: string }
+
 export interface Settings {
   /** 'demo' usa dados mockados; 'azure' fala com o ARM de verdade. */
   readonly mode: DataSourceMode
@@ -300,6 +374,13 @@ export interface Settings {
   readonly launchAtLogin: boolean
   /** Tenant usado ao montar URLs do portal. Opcional — o portal resolve sem ele. */
   readonly tenantId?: string
+  /**
+   * Como autenticar no Azure.
+   *
+   * Distinto de `tenantId` acima de propósito: aquele é derivado do token e
+   * serve só para montar URL do portal; este é configuração do usuário.
+   */
+  readonly auth: AuthConfig
 }
 
 export const POLL_INTERVAL_BOUNDS = { min: 15, max: 300 } as const
@@ -313,6 +394,7 @@ export const DEFAULT_SETTINGS: Settings = {
   watch: EMPTY_WATCH_SELECTION,
   notificationsEnabled: true,
   launchAtLogin: false,
+  auth: DEFAULT_AUTH_CONFIG,
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +453,11 @@ export interface AzmdAPI {
   refreshNow(): Promise<void>
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Settings>): Promise<Settings>
+  /**
+   * Dispara uma notificação de teste. Resolve `false` quando nada foi
+   * mostrado — notificações desligadas ou sem suporte no sistema.
+   */
+  testNotification(): Promise<boolean>
   /** Liga/desliga o monitoramento de um Logic App inteiro. */
   setLogicAppWatched(logicAppId: string, watched: boolean): Promise<void>
   /** Liga/desliga o monitoramento de um workflow específico. */
@@ -384,6 +471,31 @@ export interface AzmdAPI {
   dismissRun(runId: string): Promise<void>
   dismissAll(): Promise<void>
   quit(): Promise<void>
+
+  // -- Autenticação --------------------------------------------------------
+
+  /**
+   * Salva a config de auth. É o único caminho por onde um `clientSecret`
+   * entra, e ele nunca volta: a resposta é um `AuthConfig`, sem segredo.
+   */
+  updateAuthConfig(patch: AuthConfigPatch): Promise<AuthConfig>
+  /**
+   * Inicia o login por device code. Resolve quando o fluxo termina; o código
+   * a exibir chega antes, por `onAuthFlowChanged`.
+   */
+  authSignIn(): Promise<AuthFlowState>
+  /** Esquece a conta e apaga o secret guardado. */
+  authSignOut(): Promise<AuthConfig>
+  /** Acompanha o fluxo de login. Retorna a função de cancelamento. */
+  onAuthFlowChanged(cb: (state: AuthFlowState) => void): () => void
+  /**
+   * Abre a página de device login no navegador.
+   *
+   * Existe separado de `openRunInPortal` porque a allowlist é outra: aqui os
+   * hosts são os da Microsoft Entra, não os do portal. O renderer não abre URL
+   * externa por conta própria em nenhuma hipótese.
+   */
+  openDeviceLoginUrl(url: string): Promise<void>
 }
 
 /** Nomes dos canais IPC. Centralizados para não divergirem entre os lados. */
@@ -396,6 +508,7 @@ export const IPC = {
   refreshNow: 'azmd:refresh-now',
   getSettings: 'azmd:get-settings',
   updateSettings: 'azmd:update-settings',
+  testNotification: 'azmd:test-notification',
   setLogicAppWatched: 'azmd:set-logic-app-watched',
   setWorkflowWatched: 'azmd:set-workflow-watched',
   watchAll: 'azmd:watch-all',
@@ -404,4 +517,10 @@ export const IPC = {
   dismissRun: 'azmd:dismiss-run',
   dismissAll: 'azmd:dismiss-all',
   quit: 'azmd:quit',
+  updateAuthConfig: 'azmd:update-auth-config',
+  authSignIn: 'azmd:auth-sign-in',
+  authSignOut: 'azmd:auth-sign-out',
+  openDeviceLoginUrl: 'azmd:open-device-login-url',
+  /** main -> renderer: andamento do fluxo de device code. */
+  authFlowChanged: 'azmd:auth-flow-changed',
 } as const

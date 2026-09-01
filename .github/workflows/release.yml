@@ -1,0 +1,127 @@
+name: Release
+
+# Gera os instaladores a cada push na main.
+#
+# Por que uma matriz de dois runners: o electron-builder empacota nativamente —
+# o DMG exige ferramentas do macOS e o instalador NSIS exige as do Windows.
+# Cross-compilar daria artefato quebrado ou exigiria Wine, então cada
+# plataforma constrói o seu e o job final junta tudo numa release só.
+on:
+  push:
+    branches: [main]
+  # Permite disparar manualmente pela aba Actions, útil para refazer uma
+  # release sem precisar de um commit vazio.
+  workflow_dispatch:
+
+# O job de release cria tags e publica — precisa de escrita no repositório.
+permissions:
+  contents: write
+
+# Um push novo na main torna a build anterior obsoleta: cancelá-la evita duas
+# releases correndo para a mesma versão.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Testes e tipos rodam uma vez só: são independentes de plataforma, e falhar
+  # aqui evita gastar dois runners empacotando algo quebrado.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    needs: verify
+    strategy:
+      # Sem fail-fast: se o Windows quebrar, ainda queremos ver se o macOS
+      # passou — e vice-versa. Diagnostica os dois de uma vez.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: pack:mac
+            artifact: azmd-macos
+            # O .blockmap é subproduto do electron-builder; só o instalador
+            # interessa para quem vai baixar.
+            files: |
+              release/*.dmg
+              release/*-mac.zip
+          - os: windows-latest
+            script: pack:win
+            artifact: azmd-windows
+            files: |
+              release/*-setup.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Package
+        run: npm run ${{ matrix.script }}
+        env:
+          # Impede o electron-builder de tentar publicar sozinho: a release é
+          # criada num job só, depois que as duas plataformas terminam.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ler a versão do package.json
+        id: meta
+        # A versão vem do package.json, não de input manual: é a mesma que o
+        # electron-builder carimba no instalador, então não há como divergirem.
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publicar a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}-${{ github.run_number }}
+          name: azmd v${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            Automated build from `${{ github.sha }}`.
+
+            | Platform | Download |
+            |---|---|
+            | macOS (Apple Silicon) | `.dmg` |
+            | Windows (x64) | `-setup.exe` |
+
+            Neither build is code-signed with a paid certificate.
+
+            - **macOS**: the app is ad-hoc signed. On first launch, right-click
+              the app and choose *Open*, or run
+              `xattr -cr /Applications/azmd.app`.
+            - **Windows**: SmartScreen will warn on first run — choose
+              *More info* → *Run anyway*.
+          files: artifacts/**/*
+          # Marcar como latest é o que faz o link /releases/latest sempre
+          # apontar para o build mais recente da main.
+          make_latest: true

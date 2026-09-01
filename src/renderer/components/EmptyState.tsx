@@ -21,8 +21,8 @@ export default function EmptyState(): React.JSX.Element {
           strokeLinejoin="round"
         />
       </svg>
-      <p className="state-view__title">Nenhuma falha nas últimas 24 horas</p>
-      <p className="state-view__subtitle">Tudo funcionando normalmente.</p>
+      <p className="state-view__title">No failures in the last 24 hours</p>
+      <p className="state-view__subtitle">Everything is running normally.</p>
     </div>
   )
 }

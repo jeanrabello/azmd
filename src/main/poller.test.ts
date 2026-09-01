@@ -96,6 +96,58 @@ describe('Poller — deduplicação', () => {
     expect(result.allFailures).toHaveLength(1)
   })
 
+  /*
+   * Cenário real: o usuário abre o app, vê 7 falhas que o `primeSeen` do boot
+   * absorveu em silêncio, silencia o workflow e reativa esperando ser avisado
+   * do que perdeu. Sem `forgetSeenFor` as falhas voltariam mudas, porque o
+   * dedupe ainda as considera conhecidas.
+   */
+  it('reativar o monitoramento faz as falhas do silêncio notificarem de novo', async () => {
+    const adapter = new FakeAdapter()
+    const existing = makeRun('durante-o-silencio', '2026-08-26T10:00:00.000Z', 'Failed')
+    adapter.runs = [existing]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+
+    // Boot: o histórico entra sem notificar.
+    poller.primeSeen([existing])
+    const absorbed = await poller.runCycle(EMPTY_SCOPE)
+    expect(absorbed.newFailures).toHaveLength(0)
+
+    // Reativação: volta a contar como novo.
+    poller.forgetSeenFor([WORKFLOW.resourceId])
+    const afterReactivate = await poller.runCycle(EMPTY_SCOPE)
+    expect(afterReactivate.newFailures.map((r) => r.runName)).toEqual(['durante-o-silencio'])
+  })
+
+  it('reativar um workflow não afeta o dedupe dos outros', async () => {
+    const adapter = new FakeAdapter()
+    const run = makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')
+    adapter.runs = [run]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+
+    await poller.runCycle(EMPTY_SCOPE)
+    poller.forgetSeenFor(['/subscriptions/s1/resourceGroups/rg/providers/Microsoft.Logic/workflows/outro'])
+
+    const result = await poller.runCycle(EMPTY_SCOPE)
+    expect(result.newFailures).toHaveLength(0)
+  })
+
+  /* Silenciar e reativar não é uma forma de desfazer um descarte explícito. */
+  it('reativar não ressuscita runs dispensados manualmente', async () => {
+    const adapter = new FakeAdapter()
+    const run = makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')
+    adapter.runs = [run]
+    const poller = new Poller([adapter], { lookbackHours: 24 })
+
+    await poller.runCycle(EMPTY_SCOPE)
+    poller.dismiss(run.runId)
+    poller.forgetSeenFor([WORKFLOW.resourceId])
+
+    const result = await poller.runCycle(EMPTY_SCOPE)
+    expect(result.allFailures).toHaveLength(0)
+    expect(result.newFailures).toHaveLength(0)
+  })
+
   it('runs dispensados não voltam para a lista', async () => {
     const adapter = new FakeAdapter()
     const run = makeRun('r1', '2026-08-26T10:00:00.000Z', 'Failed')
@@ -239,6 +291,75 @@ describe('classifyError', () => {
     const error = classifyError(new Error('AzureCliCredential: please run az login'))
     expect(error.kind).toBe('auth')
     expect(error.message).toContain('az login')
+  })
+
+  it('só manda instalar a Azure CLI quando o modo é azureCli', () => {
+    // Em Device Code ou Service Principal o `az` é irrelevante: mandar
+    // instalá-lo desvia o usuário do problema real.
+    const cause = new Error('Azure CLI could not be found')
+    expect(classifyError(cause, 'azureCli').message).toContain('brew install azure-cli')
+    // Sem modo, comportamento legado — era o único modo que existia.
+    expect(classifyError(cause).message).toContain('brew install azure-cli')
+    expect(classifyError(cause, 'deviceCode').message).not.toContain('azure-cli')
+    expect(classifyError(cause, 'servicePrincipal').message).not.toContain('azure-cli')
+  })
+
+  it('adapta a mensagem de 401 ao modo de autenticação', () => {
+    const cause = { statusCode: 401, message: 'unauthorized' }
+    const deviceCode = classifyError(cause, 'deviceCode')
+    const servicePrincipal = classifyError(cause, 'servicePrincipal')
+    const cli = classifyError(cause, 'azureCli')
+
+    expect(deviceCode.kind).toBe('auth')
+    expect(deviceCode.message).toContain('Settings')
+
+    expect(servicePrincipal.kind).toBe('auth')
+    expect(servicePrincipal.message).toContain('Service Principal')
+    // O motivo mais provável e mais confuso de diagnosticar.
+    expect(servicePrincipal.message).toContain('expire')
+
+    expect(cli.kind).toBe('auth')
+    expect(cli.message).toBe(classifyError(cause).message)
+
+    // As três precisam ser distinguíveis — se coincidirem, a UI perdeu o
+    // ponto de adaptar a instrução ao modo.
+    expect(new Set([deviceCode.message, servicePrincipal.message, cli.message]).size).toBe(3)
+  })
+
+  it('403 continua sendo permissão, em qualquer modo', () => {
+    // Autenticou; o que falta é RBAC. Falar de login aqui seria conselho errado.
+    for (const mode of ['deviceCode', 'servicePrincipal', 'azureCli'] as const) {
+      expect(classifyError({ statusCode: 403, message: 'forbidden' }, mode).kind).toBe(
+        'permission',
+      )
+    }
+  })
+
+  it('AuthConfigError vira auth preservando a própria mensagem', () => {
+    // A mensagem do erro de config diz qual campo falta; trocá-la por texto
+    // genérico apagaria justamente a informação acionável.
+    class AuthConfigError extends Error {
+      readonly kind = 'authConfig'
+    }
+    const error = classifyError(new AuthConfigError('Informe o Client ID do Service Principal.'))
+    expect(error.kind).toBe('auth')
+    expect(error.message).toBe('Informe o Client ID do Service Principal.')
+  })
+
+  it('não confunde erro comum com AuthConfigError', () => {
+    // A marca `kind` é o que identifica o erro de config. Um objeto qualquer
+    // com `kind` não deve passar por ele.
+    expect(classifyError({ kind: 'authConfig', message: 'não é Error' }).kind).toBe('unknown')
+  })
+
+  it('preserva throttling e rede independentemente do modo', () => {
+    expect(classifyError({ statusCode: 429, message: 'too many' }, 'deviceCode').kind).toBe(
+      'throttled',
+    )
+    expect(classifyError({ code: 'ENOTFOUND', message: 'getaddrinfo' }, 'deviceCode').kind).toBe(
+      'network',
+    )
+    expect(classifyError(new Error('coisa estranha'), 'deviceCode').kind).toBe('unknown')
   })
 })
 

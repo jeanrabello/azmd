@@ -18,7 +18,7 @@ export default function LogicAppList({
   const visibleCount = logicApps.length - hiddenCount
 
   if (logicApps.length === 0) {
-    return <p className="details__placeholder">Nenhum Logic App encontrado</p>
+    return <p className="details__placeholder">No Logic Apps found</p>
   }
 
   return (
@@ -33,15 +33,15 @@ export default function LogicAppList({
         <div className="muted-banner">
           <span className="muted-banner__text">
             {visibleCount === 0
-              ? `Todos os ${hiddenCount} Logic Apps estão silenciados.`
-              : `${hiddenCount} ${hiddenCount === 1 ? 'Logic App silenciado' : 'Logic Apps silenciados'}.`}
+              ? `All ${hiddenCount} Logic Apps are muted.`
+              : `${hiddenCount} ${hiddenCount === 1 ? 'Logic App muted' : 'Logic Apps muted'}.`}
           </span>
           <button
             type="button"
             className="link-button link-button--small"
             onClick={() => void window.azmd.watchAll()}
           >
-            Reativar todos
+            Reactivate all
           </button>
         </div>
       )}
@@ -77,7 +77,7 @@ function LogicAppRow({
     void window.azmd.openLogicAppInPortal(group.id)
   }
 
-  const watchLabel = watched ? 'Parar de monitorar' : 'Voltar a monitorar'
+  const watchLabel = watched ? 'Stop monitoring' : 'Resume monitoring'
 
   return (
     <li className="run-row">
@@ -85,7 +85,7 @@ function LogicAppRow({
         type="button"
         className="run-row__main"
         onClick={handleOpenWorkflows}
-        aria-label={`Ver workflows de ${group.name}`}
+        aria-label={`View workflows for ${group.name}`}
       >
         <div className="run-row__top">
           <HealthDot health={health} />
@@ -127,8 +127,8 @@ function LogicAppRow({
           type="button"
           className="run-row__action"
           onClick={handleOpenPortal}
-          aria-label={`Abrir ${group.name} no portal`}
-          title="Abrir no portal"
+          aria-label={`Open ${group.name} in the portal`}
+          title="Open in portal"
         >
           <ExternalLinkIcon />
         </button>
@@ -142,11 +142,11 @@ function describeLogicApp(logicApp: LogicAppSummary): string {
   const { health, failingWorkflowCount, totalWorkflowCount } = logicApp
 
   if (health === 'unwatched') {
-    return 'Não monitorado'
+    return 'Not monitored'
   }
 
   if (health === 'failing') {
-    return `${failingWorkflowCount} de ${totalWorkflowCount} ${pluralWorkflows(totalWorkflowCount)} falhando`
+    return `${failingWorkflowCount} of ${totalWorkflowCount} ${pluralWorkflows(totalWorkflowCount)} failing`
   }
 
   return `${totalWorkflowCount} ${pluralWorkflows(totalWorkflowCount)}`

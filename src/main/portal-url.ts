@@ -23,6 +23,47 @@ export const PORTAL_ALLOWED_HOSTS: readonly string[] = [
   'ms.portal.azure.com',
 ]
 
+/**
+ * Hosts do fluxo de device code, deliberadamente SEPARADOS da allowlist do
+ * portal.
+ *
+ * Seria mais curto juntar tudo numa lista só, e é exatamente o que não
+ * queremos: as duas superfícies têm origens de confiança diferentes. As URLs
+ * de portal são montadas aqui a partir de dado remoto (nome de workflow,
+ * resource ID vindos do ARM) e é por isso que a allowlist existe; a URL de
+ * device login vem do `@azure/identity` e é aberta só durante um login que o
+ * usuário pediu. Fundir as listas alargaria a allowlist de portal — que protege
+ * o caminho de risco — para atender um caminho que nem passa por ele.
+ *
+ * QUAIS HOSTS ENTRAM AQUI, E POR QUE ESTA LISTA JÁ ERROU
+ *
+ * O `verificationUri` NÃO é montado por nós nem hardcoded no SDK: vem no
+ * corpo da resposta do Entra ID em tempo de execução, e varia com o tenant e
+ * com a nuvem (comercial, GCC, China). A primeira versão desta lista adivinhou
+ * os hosts e esqueceu `aka.ms`, que é o que o Entra devolve hoje — o botão
+ * "Abrir página de login" era bloqueado em silêncio.
+ *
+ * Ao ampliar, mantenha a regra: só hosts de login da Microsoft, comparados por
+ * igualdade estrita (`isAllowedHost`). Nunca casar por sufixo — `endsWith`
+ * aceitaria `evilmicrosoft.com`.
+ */
+export const DEVICE_LOGIN_ALLOWED_HOSTS: readonly string[] = [
+  // O que o Entra devolve hoje na nuvem comercial. `login.microsoft.com` é o
+  // host observado em execução (https://login.microsoft.com/device) — faltava
+  // aqui, e era a segunda vez que esta lista bloqueava o próprio login.
+  'aka.ms',
+  'microsoft.com',
+  'www.microsoft.com',
+  'login.microsoft.com',
+  'login.microsoftonline.com',
+  // Nuvens soberanas: mesmo fluxo, autoridade diferente.
+  'login.microsoftonline.us',
+  'login.partner.microsoftonline.cn',
+  'login.microsoftonline.de',
+  'microsoft.us',
+  'login.microsoftonline.eaglex.ic.gov',
+]
+
 export interface PortalLink {
   readonly url: string
   /** true quando caímos na lista de runs em vez do run específico. */
@@ -150,6 +191,22 @@ export function buildPortalLink(
 
 /** Valida uma URL contra a allowlist antes de entregar ao shell. */
 export function isAllowedPortalUrl(candidate: string): boolean {
+  return isAllowedHost(candidate, PORTAL_ALLOWED_HOSTS)
+}
+
+/** Valida a URL de verificação do device code. Ver DEVICE_LOGIN_ALLOWED_HOSTS. */
+export function isAllowedDeviceLoginUrl(candidate: string): boolean {
+  return isAllowedHost(candidate, DEVICE_LOGIN_ALLOWED_HOSTS)
+}
+
+/**
+ * Comparação exata de hostname, nunca por sufixo.
+ *
+ * `endsWith('microsoft.com')` aceitaria `evilmicrosoft.com` — daí a igualdade
+ * estrita. `https:` obrigatório porque uma URL de login por outro esquema não
+ * tem uso legítimo aqui.
+ */
+function isAllowedHost(candidate: string, hosts: readonly string[]): boolean {
   let parsed: URL
   try {
     parsed = new URL(candidate)
@@ -157,5 +214,5 @@ export function isAllowedPortalUrl(candidate: string): boolean {
     return false
   }
   if (parsed.protocol !== 'https:') return false
-  return PORTAL_ALLOWED_HOSTS.includes(parsed.hostname)
+  return hosts.includes(parsed.hostname)
 }

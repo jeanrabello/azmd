@@ -1,6 +1,6 @@
 import type { LogicAppAdapter } from './azure/adapter.js'
 import { isFailureStatus } from '../shared/types.js'
-import type { AppError, Scope, WorkflowRef, WorkflowRun } from '../shared/types.js'
+import type { AppError, AuthMode, Scope, WorkflowRef, WorkflowRun } from '../shared/types.js'
 
 /**
  * Motor de polling.
@@ -73,11 +73,21 @@ export interface PollerOptions {
   readonly lookbackHours: number
   /** Injeção de relógio, para testes determinísticos. */
   readonly now?: () => Date
+  /**
+   * Modo de autenticação em uso, só para redigir a mensagem de erro.
+   *
+   * O poller não autentica nada — quem o faz é a credencial dentro do adapter.
+   * Mas é aqui que o 401 do ARM aparece, e a instrução certa para o usuário
+   * depende do modo (ver `classifyError`). Opcional: sem ele a classificação
+   * continua correta, só mais genérica.
+   */
+  readonly authMode?: AuthMode
 }
 
 export class Poller {
   #adapters: LogicAppAdapter[]
   #lookbackHours: number
+  #authMode: AuthMode | undefined
   readonly #now: () => Date
 
   readonly #workflowState = new Map<string, WorkflowState>()
@@ -98,6 +108,7 @@ export class Poller {
   constructor(adapters: LogicAppAdapter[], options: PollerOptions) {
     this.#adapters = adapters
     this.#lookbackHours = options.lookbackHours
+    this.#authMode = options.authMode
     this.#now = options.now ?? (() => new Date())
   }
 
@@ -114,12 +125,46 @@ export class Poller {
     this.#lookbackHours = hours
   }
 
+  /**
+   * Atualiza o modo usado nas mensagens de erro.
+   *
+   * Trocar de modo não invalida cursor nem histórico — os dados são os mesmos,
+   * só a forma de obter token mudou. Por isso é um setter e não um poller novo.
+   */
+  setAuthMode(mode: AuthMode | undefined): void {
+    this.#authMode = mode
+  }
+
   dismiss(runId: string): void {
     this.#dismissed.add(runId)
   }
 
   dismissAll(runIds: readonly string[]): void {
     for (const id of runIds) this.#dismissed.add(id)
+  }
+
+  /**
+   * Esquece o que já foi visto nestes workflows, para que volte a notificar.
+   *
+   * Usado ao REATIVAR o monitoramento. Enquanto um workflow está ignorado ele
+   * não é consultado, então o usuário fica sem saber o que houve ali; ao voltar
+   * a acompanhá-lo, a expectativa é ser avisado do que perdeu — e não que as
+   * falhas apareçam mudas na lista porque o dedupe ainda as considera velhas.
+   *
+   * Só o `seenRuns` é limpo. O `dismissed` fica: descartar é uma decisão
+   * explícita sobre aquele run, e silenciar/reativar o workflow não a desfaz.
+   */
+  forgetSeenFor(workflowResourceIds: readonly string[]): void {
+    for (const resourceId of workflowResourceIds) {
+      // `recentByWorkflow` é o que liga run -> workflow; o `seenRuns` é
+      // indexado só por runId e sozinho não permitiria este filtro.
+      for (const run of this.#recentByWorkflow.get(resourceId) ?? []) {
+        this.#seenRuns.delete(run.runId)
+      }
+      // O cursor ficou congelado no instante em que o workflow foi ignorado
+      // (ele só avança em `#pollWorkflow`, que não roda para ignorados), então
+      // a próxima consulta já cobre o período do silêncio. Nada a fazer aqui.
+    }
   }
 
   /**
@@ -179,7 +224,7 @@ export class Poller {
         errors.push({
           workflowResourceId: `adapter:${adapter.id}`,
           workflowName: adapter.id,
-          error: classifyError(cause),
+          error: classifyError(cause, this.#authMode),
         })
       }
     }
@@ -218,7 +263,7 @@ export class Poller {
       }
       return runs
     } catch (cause) {
-      const error = classifyError(cause)
+      const error = classifyError(cause, this.#authMode)
       state.consecutiveFailures += 1
       state.skipUntil = nowMs + this.#backoffFor(state, cause)
       errors.push({
@@ -319,19 +364,74 @@ function asHttpish(cause: unknown): HttpishError {
   return typeof cause === 'object' && cause !== null ? (cause as HttpishError) : {}
 }
 
-/** Converte o erro cru do SDK numa categoria que a UI sabe apresentar. */
-export function classifyError(cause: unknown): AppError {
+/**
+ * Reconhece o `AuthConfigError` de auth/credential.ts pela marca `kind`, em
+ * vez de por `instanceof`.
+ *
+ * O motivo é manter este módulo livre do SDK do Azure: importar a classe
+ * arrastaria `@azure/identity` para dentro do poller, que hoje é testável sem
+ * mock de nada. A marca é um campo literal da própria classe — é o que ela
+ * existe para oferecer.
+ */
+function isAuthConfigError(cause: unknown): cause is Error & { kind: 'authConfig' } {
+  return (
+    cause instanceof Error &&
+    (cause as { kind?: unknown }).kind === 'authConfig' &&
+    cause.message.length > 0
+  )
+}
+
+/**
+ * O que dizer ao usuário quando a autenticação falha.
+ *
+ * A causa provável de um 401 muda completamente com o modo, e é isso que
+ * decide a ação certa:
+ *
+ *  - `deviceCode`: o refresh token caducou ou foi revogado. A saída é entrar
+ *    de novo, e isso acontece dentro do app.
+ *  - `servicePrincipal`: aqui a causa mais provável é secret expirado. Vale
+ *    dizer isso explicitamente porque é o modo de falhar mais confuso do
+ *    Azure: a credencial funcionou por meses e para de um dia para o outro,
+ *    sem nada ter mudado do lado do app.
+ *  - `azureCli`: a sessão vive fora do app, então a ação também.
+ */
+function authFailureMessage(authMode: AuthMode | undefined): string {
+  switch (authMode) {
+    case 'deviceCode':
+      return 'Your session expired. Sign in again from Settings.'
+    case 'servicePrincipal':
+      return 'Failed to authenticate with the Service Principal — check the Client ID and Secret. Azure secrets expire.'
+    default:
+      return 'Could not authenticate with Azure — check your session.'
+  }
+}
+
+/**
+ * Converte o erro cru do SDK numa categoria que a UI sabe apresentar.
+ *
+ * `authMode` é opcional porque a classificação continua correta sem ele — só
+ * menos específica. Omitido, o comportamento é o legado (do tempo em que a CLI
+ * era o único modo), o que mantém os call sites antigos válidos.
+ */
+export function classifyError(cause: unknown, authMode?: AuthMode): AppError {
   const err = asHttpish(cause)
   const status = err.statusCode ?? err.status
   const message = err.message ?? String(cause)
+
+  // Config incompleta (ver auth/credential.ts) não é falha de rede nem 401: a
+  // credencial nem chegou a ser montada. A mensagem do AuthConfigError já diz
+  // qual campo falta, então preservá-la é mais útil que qualquer texto nosso.
+  if (isAuthConfigError(cause)) {
+    return { kind: 'auth', message: cause.message, detail: cause.message }
+  }
 
   if (status === 401 || status === 403) {
     const isAuth = status === 401 || /credential|token|login/i.test(message)
     return {
       kind: isAuth ? 'auth' : 'permission',
       message: isAuth
-        ? 'Não foi possível autenticar no Azure — verifique sua sessão.'
-        : 'Sem permissão para ler o histórico de runs.',
+        ? authFailureMessage(authMode)
+        : 'No permission to read run history.',
       detail: message,
     }
   }
@@ -339,7 +439,7 @@ export function classifyError(cause: unknown): AppError {
   if (status === 429) {
     return {
       kind: 'throttled',
-      message: 'O Azure está limitando as requisições. Tentando de novo em instantes.',
+      message: 'Azure is throttling requests. Retrying shortly.',
       detail: message,
     }
   }
@@ -350,17 +450,27 @@ export function classifyError(cause: unknown): AppError {
     err.code === 'ETIMEDOUT' ||
     /network|fetch failed|getaddrinfo/i.test(message)
   ) {
-    return { kind: 'network', message: 'Sem conexão com o Azure.', detail: message }
+    return { kind: 'network', message: 'No connection to Azure.', detail: message }
   }
 
   // "could not be found" é diferente de "não autenticado": o binário não está
   // no PATH. Mandar rodar `az login` nesse caso é conselho errado — quem abre
   // o app pela GUI já fez login, e o problema é o PATH enxuto que o macOS dá
   // a apps de GUI (ver auth/shell-path.ts).
-  if (/could not be found|couldn't be found|ENOENT/i.test(message) && /cli/i.test(message)) {
+  //
+  // Só vale em modo CLI: mandar instalar a Azure CLI em Device Code ou Service
+  // Principal manda o usuário resolver um problema que ele não tem, e desvia
+  // do real. Sem `authMode` mantemos o comportamento antigo, porque era o
+  // único modo que existia.
+  const cliIsRelevant = authMode === 'azureCli' || authMode === undefined
+  if (
+    cliIsRelevant &&
+    /could not be found|couldn't be found|ENOENT/i.test(message) &&
+    /cli/i.test(message)
+  ) {
     return {
       kind: 'auth',
-      message: 'A Azure CLI não foi encontrada. Instale com `brew install azure-cli`.',
+      message: 'The Azure CLI was not found. Install it with `brew install azure-cli`.',
       detail: message,
     }
   }
@@ -368,12 +478,17 @@ export function classifyError(cause: unknown): AppError {
   if (/credential|DefaultAzureCredential|AzureCliCredential|az login/i.test(message)) {
     return {
       kind: 'auth',
-      message: 'Sessão do Azure expirada ou ausente. Rode `az login` no terminal.',
+      // Mesmo raciocínio do ramo acima: `az login` só é a saída quando a
+      // sessão que falhou é a da CLI. Nos outros modos, a instrução certa é a
+      // de `authFailureMessage`, que aponta para dentro do app.
+      message: cliIsRelevant
+        ? 'Azure session expired or missing. Run `az login` in your terminal.'
+        : authFailureMessage(authMode),
       detail: message,
     }
   }
 
-  return { kind: 'unknown', message: 'Falha ao consultar o Azure.', detail: message }
+  return { kind: 'unknown', message: 'Failed to query Azure.', detail: message }
 }
 
 /** Lê `Retry-After` (segundos ou data HTTP) e devolve milissegundos. */

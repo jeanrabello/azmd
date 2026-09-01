@@ -1,150 +1,153 @@
 # azmd
 
-App de menu bar para macOS que monitora runs de Azure Logic Apps, notifica falhas nativamente e abre o run no portal com um clique.
+A menu bar app (macOS) / system tray app (Windows) that monitors Azure Logic Apps runs, delivers native failure notifications, and opens the run in the portal with one click.
 
-Antes chamado Runbar. Implementação do `PLANO_1.md` — fases 1 a 3.
-
-## Rodando
+## Running
 
 ```bash
-nvm use          # Node 24 (ver .nvmrc)
+nvm use          # Node 24 (see .nvmrc)
 npm install
 npm run dev
 ```
 
-O app sobe **em modo demo**, com dados mockados. Ele aparece na menu bar, não no Dock.
+The app starts **in demo mode**, with mocked data. It lives in the menu bar / system tray, not in the Dock or taskbar.
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Desenvolvimento com HMR no renderer |
-| `npm run build` | Typecheck + bundle de main, preload e renderer |
-| `npm test` | Suíte de testes (vitest) |
-| `npm run typecheck` | Só a verificação de tipos |
-| `npm run pack:mac` | Gera .dmg/.zip em `release/` (assinatura ad-hoc — ver Distribuição) |
+| `npm run dev` | Development with HMR in the renderer |
+| `npm run build` | Typecheck + bundle main, preload and renderer |
+| `npm test` | Test suite (vitest) |
+| `npm run typecheck` | Type-checking only |
+| `npm run pack:mac` | Builds .dmg/.zip into `release/` (ad-hoc signed — see Distribution) |
+| `npm run pack:win` | Builds an NSIS x64 installer into `release/` |
+| `npm run pack:all` | Builds installers for both macOS and Windows |
 
-## Modo demo × modo Azure
+## Demo mode vs. Azure mode
 
-O toggle fica em **⚙︎ → Fonte de dados**, e é o mecanismo que permite rodar e testar o app inteiro sem credencial nenhuma.
+The toggle lives in **⚙︎ → Data source**, and it's what lets you run and test the whole app without any credential at all.
 
-- **Demo** (padrão) — `DemoAdapter` produz runs falhos determinísticos com a mesma estrutura que o Azure retorna. Um badge `DEMO` fica visível no cabeçalho o tempo todo, para nunca confundir dado fictício com dado real.
-- **Azure** — consulta o ARM de verdade. Exige credencial: `az login`, `azd auth login` ou as variáveis do `EnvironmentCredential`. Sem isso o app mostra um erro acionável, não uma tela vazia.
+- **Demo** (default) — `DemoAdapter` produces deterministic failed runs with the same shape Azure returns. A `DEMO` badge stays visible in the header at all times, so fake data is never mistaken for real data.
+- **Azure** — queries the real ARM API. Authentication is configured in **Settings → Authentication**, with three modes: **My account** (device code sign-in in the browser — no App Registration, no Azure CLI, uses the Azure CLI's public client ID), **Service Principal** (tenant ID + client ID + client secret, encrypted at rest via `safeStorage`), or **Azure CLI** (reuses the machine's `az` session). Without a working credential the app shows an actionable error, not a blank screen.
 
-A troca é total: modo demo não instancia SDK do Azure, e nada além de `AppController.#buildAdapters` sabe que existem dois modos. Poller, dedupe, notificação, IPC e UI são idênticos nos dois casos — é o que garante que o que você testa em demo é o mesmo código que roda em produção.
+The switch is total: demo mode never instantiates the Azure SDK, and nothing outside `AppController.#buildAdapters` knows two modes exist. Poller, dedupe, notifications, IPC and UI are identical in both cases — which is what guarantees that what you test in demo is the same code that runs in production.
 
-## Navegação
+## Navigation
 
-A tela inicial lista **Logic Apps**, não runs — com dezenas de workflows, uma lista plana de falhas não diz onde está o problema. Cada linha mostra saúde (verde/vermelho), quantos workflows estão falhando, o total de runs falhos e quando foi a última falha. Falhando primeiro, ignorados por último.
+The home screen lists **Logic Apps**, not runs — with dozens of workflows, a flat list of failures doesn't tell you where the problem is. Each row shows health (green/red), how many workflows are failing, the total count of failed runs, and when the last failure happened. Failing apps sort first, ignored ones last.
 
 ```
-Logic Apps  →  workflows do app  →  runs falhos  →  detalhe do run
+Logic Apps  →  app's workflows  →  failed runs  →  run detail
 ```
 
-**Agrupamento.** O Azure não tem um conceito único de "Logic App" que sirva aos dois sabores: no Standard o grupo é o App Service, e os workflows vivem dentro dele; no Consumption cada workflow é um recurso independente, sem pai — esses são agrupados por **resource group**, que é como o portal organiza e como ambientes costumam ser separados (prd, dev, financeiro).
+**Grouping.** Azure has no single "Logic App" concept that fits both flavors: in Standard the group is the App Service, and workflows live inside it; in Consumption each workflow is an independent resource with no parent, so those are grouped by **resource group**, which is how the portal organizes them and how environments are usually separated (prod, dev, finance).
 
-**Escolher o que observar.** O ícone de olho em cada linha liga/desliga o monitoramento, tanto de um Logic App inteiro quanto de um workflow específico. O que não é observado não notifica, não aparece na contagem e **não é consultado** — o poller filtra antes da chamada, então ignorar economiza quota do ARM.
+**Choosing what to watch.** The eye icon on each row toggles monitoring, for a whole Logic App or a single workflow. Anything not watched doesn't notify, doesn't count toward totals, and **isn't queried** — the poller filters before the call goes out, so ignoring something actually saves ARM quota.
 
-Se muitos apps ficarem silenciados, um aviso no topo da lista diz quantos são e oferece **Reativar todos** — sem ele, silenciar tudo produzia uma tela idêntica à de "não encontrei nada", e reativar um a um era inviável.
+If enough apps get muted, a banner at the top of the list reports how many and offers **Unmute all** — without it, muting everything produced a screen identical to "found nothing," and re-enabling one by one wasn't practical.
 
-A seleção é *opt-out*: por padrão tudo é monitorado, e o que se guarda é a lista do que foi ignorado. É deliberado — um Logic App novo aparecendo no Azure deve ser monitorado sem exigir ação. O contrário faria o app silenciosamente deixar de avisar sobre coisas que não existiam quando a seleção foi feita, que é o pior modo de falhar para um monitor. Itens ignorados continuam visíveis na lista (marcados "Não monitorado") para poderem ser reativados.
+Selection is *opt-out*: everything is monitored by default, and what's persisted is the list of what's been ignored. That's deliberate — a new Logic App appearing in Azure should be monitored without requiring action. The opposite would make the app silently stop warning about things that didn't exist when the selection was made, which is the worst way for a monitor to fail. Ignored items stay visible in the list (marked "Not monitored") so they can be re-enabled.
 
-## Interação
+## Interaction
 
-**Listagem de runs** — clicar na linha abre a tela de detalhes. Abrir no portal virou um botão explícito (ícone de link externo, aparece no hover), ao lado do descartar. A troca é deliberada: a mensagem de erro na lista vem truncada em uma linha, e mandar o usuário ao navegador só para ler o motivo era um caminho longo demais.
+**Run listing** — clicking a row opens the detail screen. Opening in the portal became an explicit button (external-link icon, shown on hover), next to dismiss. That's a deliberate change: the error message in the list is truncated to one line, and sending the user to the browser just to read the reason was too roundabout.
 
-**Detalhes** — mensagem de erro completa (sem truncar), código do erro, horários, duração, run name e correlation ID. Quando o Azure devolve um payload que a normalização não cobre, um "Ver retorno do Azure" mostra o JSON cru.
+**Details** — full error message (untruncated), error code, timestamps, duration, run name and correlation ID. When Azure returns a payload the normalization doesn't cover, a "View raw Azure response" link shows the raw JSON.
 
-A tela também lista os **últimos 5 runs do workflow, com sucessos e falhas**. Sucessos entram de propósito: três falhas seguidas contam uma história diferente de uma falha isolada entre sucessos, e a listagem principal não mostra isso. Esses dados saem do que o poller já coletou — abrir os detalhes não gera chamada nova ao Azure.
+The screen also lists the **workflow's last 5 runs, successes and failures alike**. Successes are included on purpose: three failures in a row tells a different story than one failure between successes, and the main list doesn't show that. This data comes from what the poller already collected — opening the details doesn't trigger a new call to Azure.
 
-## Arquitetura
+## Architecture
 
 ```
 src/
-├─ shared/types.ts        # contratos entre os três processos — fonte da verdade
+├─ shared/types.ts        # contracts between the three processes — source of truth
 ├─ main/
-│  ├─ index.ts            # bootstrap, IPC, ciclo de vida
-│  ├─ app-controller.ts   # dono do estado; o toggle demo/azure mora aqui
-│  ├─ poller.ts           # cursores, dedupe, backoff por workflow
-│  ├─ notifier.ts         # notificações nativas + agregação
-│  ├─ tray.ts             # ícone template + popover ancorado
-│  ├─ portal-url.ts       # deep links (ver Ressalvas)
-│  ├─ settings-store.ts   # preferências, com sanitização na fronteira
-│  ├─ safe-open.ts        # único ponto que abre URL externa (allowlist)
-│  ├─ auth/credential.ts  # cadeia de credenciais
+│  ├─ index.ts            # bootstrap, IPC, lifecycle
+│  ├─ app-controller.ts   # owns app state; the demo/azure toggle lives here
+│  ├─ poller.ts           # cursors, dedupe, per-workflow backoff
+│  ├─ notifier.ts         # native notifications + aggregation
+│  ├─ tray.ts             # template icon + anchored popover
+│  ├─ portal-url.ts       # deep links (see Known caveats)
+│  ├─ settings-store.ts   # preferences, sanitized at the boundary
+│  ├─ safe-open.ts        # single choke point for opening external URLs (allowlist)
+│  ├─ auth/               # credential chain, token cache, encrypted secret storage
 │  └─ azure/
-│     ├─ adapter.ts       # interface LogicAppAdapter
+│     ├─ adapter.ts       # LogicAppAdapter interface
 │     ├─ consumption.ts   # @azure/arm-logic
 │     ├─ standard.ts      # @azure/arm-appservice
 │     ├─ discovery.ts     # Resource Graph
-│     ├─ discovered.ts    # adapters reais + inventário do Resource Graph
+│     ├─ discovered.ts    # real adapters + Resource Graph inventory
 │     └─ demo.ts          # mocks
-├─ preload/index.ts       # contextBridge, contrato mínimo
-└─ renderer/              # React; não conhece Azure
+├─ preload/index.ts       # contextBridge, minimal contract
+└─ renderer/              # React; knows nothing about Azure
 ```
 
-O renderer nunca vê credencial, SDK ou URL não validada. Recebe `AppState` pronto e devolve intenções (`openRunInPortal(runId)`), nunca ações.
+The renderer never sees a credential, an SDK, or an unvalidated URL. It receives a ready-made `AppState` and returns intents (`openRunInPortal(runId)`), never actions.
 
-## Segurança
+## Security
 
-`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP restritiva no renderer. `shell.openExternal` só aceita URLs validadas contra uma allowlist de hosts do portal. Nenhum token é gravado pelo app — hoje quem detém a credencial é o Azure CLI.
+`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, a restrictive CSP in the renderer. `shell.openExternal` only accepts URLs validated against an allowlist of portal hosts. Authentication secrets (Service Principal client secret, MSAL token cache) are encrypted at rest via Electron's `safeStorage`, which is backed by the OS keychain (Keychain on macOS, DPAPI on Windows).
 
-## Validado contra um tenant real
+## Validated against a real tenant
 
-Testado em 26/08/2026 contra um tenant com **33 Logic Apps Standard e 298 workflows**. Descoberta completa em ~18s; 76 runs falhos encontrados, todos com mensagem de erro preenchida.
+Tested on 2026-08-26 against a tenant with **33 Standard Logic Apps and 298 workflows**. Full discovery in ~18s; 76 failed runs found, all with a populated error message.
 
-Três coisas só apareceram com dado real e mudaram o código:
+Three things only surfaced with real data and changed the code:
 
-**1. Runs de Standard não existem no ARM.** O SDK `@azure/arm-appservice` expõe `workflowRuns.list`, mas `.../sites/{site}/workflows/{wf}/runs` devolve 404. O histórico fica atrás do proxy `hostruntime`, que encaminha para o runtime do próprio App Service:
+**1. Standard runs don't exist in ARM.** The `@azure/arm-appservice` SDK exposes `workflowRuns.list`, but `.../sites/{site}/workflows/{wf}/runs` returns 404. Run history sits behind the `hostruntime` proxy, which forwards to the App Service's own runtime:
 
 ```
 .../sites/{site}/hostruntime/runtime/webhooks/workflow/api/management/workflows/{wf}/runs
 ```
 
-`azure/standard.ts` foi reescrito para falar HTTP direto com esse endpoint. Antes, o adapter não teria retornado run nenhum.
+`azure/standard.ts` was rewritten to talk HTTP directly to that endpoint. Before this, the adapter would have returned no runs at all.
 
-**2. O `name` do workflow vem prefixado com o site.** A listagem do ARM devolve `"la-trux/wf-PostPayment"`, enquanto o `id` usa o nome puro (`.../workflows/wf-PostPayment`). Montar URL a partir do `name` quebra; o runtime, por sua vez, já devolve o nome limpo.
+**2. The workflow's `name` comes prefixed with the site.** ARM's listing returns `"la-trux/wf-PostPayment"`, while `id` uses the plain name (`.../workflows/wf-PostPayment`). Building a URL from `name` breaks; the runtime, on the other hand, already returns the clean name.
 
-**3. O deep link do Standard usa outra extensão do portal.** Não é o `#@tenant/resource{id}/runs` que eu tinha assumido — é a `WorkflowMenuBlade` da extensão `Microsoft_Azure_EMA`, com o resource ID URL-encoded como um único segmento:
+**3. The Standard deep link uses a different portal extension.** It's not the `#@tenant/resource{id}/runs` pattern originally assumed — it's the `WorkflowMenuBlade` from the `Microsoft_Azure_EMA` extension, with the resource ID URL-encoded as a single segment:
 
 ```
 #view/Microsoft_Azure_EMA/WorkflowMenuBlade/~/runHistory
-  /resourceId/{resourceId encodado}
-  /location/{nome de exibição, ex.: "Central US"}
+  /resourceId/{URL-encoded resourceId}
+  /location/{display name, e.g. "Central US"}
   /isReadOnly~/false/kind/{Stateful|Stateless}/defaultBlade/designer/isCodeful~/false
 ```
 
-Dois detalhes que só uma URL real revelou: o `location` usa o **nome de exibição** ("Central US"), não o slug que o ARM devolve ("centralus") — daí `azure/regions.ts`, gerado de `az account list-locations`, porque a conversão não é derivável (tentativa algorítmica acertou 50 de 109 regiões). E o `kind` (Stateful/Stateless) vem do runtime, não do ARM.
+Two details only a real URL revealed: `location` uses the **display name** ("Central US"), not the slug ARM returns ("centralus") — hence `azure/regions.ts`, generated from `az account list-locations`, because the mapping isn't derivable (an algorithmic attempt only got 50 of 109 regions right). And `kind` (Stateful/Stateless) comes from the runtime, not from ARM.
 
-O portal não expõe blade por run no Standard, então o link abre o **histórico do workflow** — o run procurado fica no topo. O botão diz "Abrir histórico no portal", não "Abrir run".
+The portal doesn't expose a per-run blade for Standard, so the link opens the **workflow's run history** — the run you're looking for is at the top. The button reads "Open history in portal," not "Open run."
 
-Sobre a mensagem de erro: no tenant testado, 69 dos 76 runs falhos trazem o genérico `ActionFailed — "An action failed. No dependent actions succeeded."`. Conferimos que buscar as ações do run (`/runs/{id}/actions`) devolve a mesma mensagem genérica, então a chamada extra não ajudaria. O payload cru fica disponível em "Ver retorno do Azure".
+On error messages: in the tested tenant, 69 of 76 failed runs carry the generic `ActionFailed — "An action failed. No dependent actions succeeded."` We confirmed that fetching the run's actions (`/runs/{id}/actions`) returns the same generic message, so the extra call wouldn't help. The raw payload is available via "View raw Azure response."
 
-## Ressalvas conhecidas
+## Known caveats
 
-**Deep link do run específico não foi validado contra o portal.** O plano (seção 13) pede abrir um run falho real, copiar a URL e derivar o template. Isso exige uma sessão no portal, que não estava disponível. O que existe hoje:
+**The specific-run deep link hasn't been validated against the portal.** Confirming it requires opening a real failed run in the portal, copying the URL, and comparing it against the derived template — that session wasn't available during testing. What exists today:
 
-- A URL da **lista de runs** usa o formato estável e documentado — essa parte é confiável.
-- A URL do **run específico** segue o formato derivado do resource ID, e está isolada em duas funções no topo de `portal-url.ts`, comentadas com `VALIDAR`. Se o formato estiver errado, o conserto é editar só essas linhas.
-- Existe fallback: qualquer falha na construção cai na lista de runs do workflow, nunca num 404.
+- The **run list** URL uses the stable, documented format — that part is reliable.
+- The **specific-run** URL follows a format derived from the resource ID, and is isolated in two functions at the top of `portal-url.ts`, flagged with a `VALIDATE` comment. If the format turns out to be wrong, the fix is contained to those lines.
+- There's a fallback: any failure while building the URL falls back to the workflow's run list, never a 404.
 
-**A extração da mensagem de erro é a parte com maior chance de precisar de ajuste.** O SDK tipa `WorkflowRun.error` como `any` e o formato varia na prática (plano, aninhado em `error.error`, com o motivo só em `details[]`, ou string solta). `azure/run-error.ts` tenta os formatos conhecidos em ordem e sempre guarda o payload cru — então mesmo se a normalização errar, o "Ver retorno do Azure" mostra o que realmente chegou. Se aparecer um formato novo, é lá que se acrescenta, e há testes cobrindo cada caso.
+**Error-message extraction is the part most likely to need adjustment.** The SDK types `WorkflowRun.error` as `any`, and the shape varies in practice (flat, nested under `error.error`, with the reason only in `details[]`, or a bare string). `azure/run-error.ts` tries the known shapes in order and always keeps the raw payload — so even if normalization gets it wrong, "View raw Azure response" shows what actually came back. If a new shape shows up, that's where it gets added, and there are tests covering each case.
 
-**O caminho Consumption continua sem validação real.** O tenant testado só tem Logic Apps Standard, então `consumption.ts` e o agrupamento por resource group nunca foram exercitados contra dado de verdade — seguem cobertos apenas por tipos e testes.
+**The Consumption path is still unvalidated against real data.** The tested tenant only has Standard Logic Apps, so `consumption.ts` and the resource-group grouping have never been exercised against real data — they're covered only by types and tests so far.
 
-## Distribuição
+## Distribution
 
 ```bash
-npm run pack:mac        # gera release/azmd-0.1.0-arm64.dmg
+npm run pack:mac        # produces release/azmd-0.1.0-arm64.dmg
 cp -R release/mac-arm64/azmd.app /Applications/
+
+npm run pack:win        # produces an NSIS installer in release/
 ```
 
-O build empacotado foi testado: instala, abre, encontra os 33 Logic Apps e aparece como **azmd** no macOS.
+Every push to `main` triggers the GitHub Actions workflow in `.github/workflows/release.yml`: it verifies the code (typecheck + tests), builds installers for macOS and Windows in a matrix, and publishes them as a GitHub Release. Grab the latest installers from **Releases** rather than building locally.
 
-**Sobre o nome "Electron" nos Itens de Início de Sessão.** Sem certificado Developer ID, o electron-builder deixa a assinatura herdada do binário do Electron — cujo *identifier* é literalmente `Electron`. O macOS lê esse identifier ao registrar o login item, então o app aparecia com o nome errado mesmo com `CFBundleName` correto. `scripts/adhoc-sign.cjs` (rodado via `afterSign`) reassina ad-hoc com o appId, e aí o registro sai como `azmd`.
+Neither build is signed with a paid certificate:
 
-Se você já tinha ligado "iniciar com o login" rodando em modo dev, sobra uma entrada **Electron** apontando para `node_modules/electron/dist/Electron.app`. Remova em Ajustes do Sistema → Geral → Itens de Início de Sessão — o macOS não deixa um app apagar a entrada de outro.
+- **macOS** — the app is ad-hoc signed. Gatekeeper will complain on first launch; clear it with `xattr -cr /Applications/azmd.app`, or right-click → Open.
+- **Windows** — SmartScreen will warn on first run since there's no code-signing certificate. Click **More info → Run anyway**.
 
-**Sobre o PATH e a Azure CLI.** Um app aberto pela GUI não herda o ambiente do shell: o macOS lhe dá apenas `/usr/bin:/bin:/usr/sbin:/sbin`. Como o `az` mora em `/opt/homebrew/bin`, o modo Azure falhava com "Azure CLI could not be found" — mesmo com `az login` feito, e mesmo funcionando quando o app rodava pelo terminal. `auth/shell-path.ts` conserta o PATH no boot: primeiro tenta os diretórios conhecidos (barato), e só recorre a um shell de login se ainda assim não achar. Testado com o PATH mínimo real: encontra `/opt/homebrew/bin/az` sem precisar do shell.
+**About the "Electron" name in Login Items (macOS).** Without a Developer ID certificate, electron-builder leaves the Electron binary's inherited signature in place — whose *identifier* is literally `Electron`. macOS reads that identifier when registering the login item, so the app used to show up under the wrong name even with a correct `CFBundleName`. `scripts/adhoc-sign.cjs` (run via `afterSign`) re-signs ad-hoc with the appId, so the registration comes out as `azmd`.
 
-Ainda **não é notarizado**: falta um certificado Developer ID. Na primeira abertura o Gatekeeper vai reclamar (botão direito → Abrir, ou `xattr -dr com.apple.quarantine /Applications/azmd.app`). Para notarizar: defina `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` e `APPLE_TEAM_ID`, obtenha o certificado e ligue `notarize: true`.
+If you previously enabled "open at login" while running in dev mode, a stray **Electron** entry pointing at `node_modules/electron/dist/Electron.app` may remain. Remove it under System Settings → General → Login Items — macOS won't let one app delete another's entry.
 
-Fase 4 do plano (MSAL no lugar do Azure CLI, safeStorage, auto-update) não foi implementada.
+**About PATH and the Azure CLI (macOS).** An app launched from the GUI doesn't inherit the shell's environment: macOS hands it only `/usr/bin:/bin:/usr/sbin:/sbin`. Since `az` lives in `/opt/homebrew/bin`, Azure CLI mode used to fail with "Azure CLI could not be found" — even after `az login`, and even though it worked fine when launched from a terminal. `auth/shell-path.ts` fixes the PATH at boot: it first tries known directories (cheap), and only falls back to a login shell if still not found. Tested with the real minimal PATH: it finds `/opt/homebrew/bin/az` without needing the shell fallback.

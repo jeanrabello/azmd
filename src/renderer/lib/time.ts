@@ -18,12 +18,12 @@ const DAY_MS = 24 * HOUR_MS
  */
 export function formatSyncAge(iso: string, now: Date = new Date()): string {
   const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return 'data desconhecida'
+  if (Number.isNaN(then.getTime())) return 'unknown date'
 
   const diffMs = now.getTime() - then.getTime()
   // Pequena divergência de relógio não deve virar tempo negativo.
-  if (diffMs < 5_000) return 'agora'
-  if (diffMs < MINUTE_MS) return `há ${Math.floor(diffMs / 1000)}s`
+  if (diffMs < 5_000) return 'now'
+  if (diffMs < MINUTE_MS) return `${Math.floor(diffMs / 1000)}s ago`
 
   return formatRelativeTime(iso, now)
 }
@@ -36,7 +36,7 @@ export function formatSyncAge(iso: string, now: Date = new Date()): string {
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso)
   if (Number.isNaN(then.getTime())) {
-    return 'data desconhecida'
+    return 'unknown date'
   }
 
   const diffMs = now.getTime() - then.getTime()
@@ -44,28 +44,28 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
   // Relógio do sistema pode divergir um pouco do timestamp do servidor;
   // trata pequenas diferenças futuras como "agora" em vez de negativo.
   if (diffMs < MINUTE_MS) {
-    return 'agora'
+    return 'now'
   }
 
   if (diffMs < HOUR_MS) {
     const minutes = Math.floor(diffMs / MINUTE_MS)
-    return `há ${minutes}min`
+    return `${minutes}min ago`
   }
 
   if (diffMs < DAY_MS) {
     const hours = Math.floor(diffMs / HOUR_MS)
-    return `há ${hours}h`
+    return `${hours}h ago`
   }
 
   const days = Math.floor(diffMs / DAY_MS)
   if (days === 1) {
-    return 'ontem'
+    return 'yesterday'
   }
 
   if (days < 7) {
-    return `há ${days}d`
+    return `${days}d ago`
   }
 
   // Além de uma semana, texto relativo perde utilidade — mostra a data.
-  return then.toLocaleDateString('pt-BR')
+  return then.toLocaleDateString('en-US')
 }

@@ -71,8 +71,8 @@ function RunRow({
   // No Standard o portal não tem blade por run: o link abre o histórico do
   // workflow, com este run no topo. Não é falha — é o que o portal oferece.
   const portalLabel = run.portalUrlIsFallback
-    ? 'Abrir histórico de runs no portal'
-    : 'Abrir run no portal'
+    ? 'Open run history in portal'
+    : 'Open run in portal'
 
   return (
     <li className="run-row">
@@ -80,7 +80,7 @@ function RunRow({
         type="button"
         className="run-row__main"
         onClick={handleOpenDetails}
-        aria-label={`Ver detalhes da falha de ${run.workflowName}`}
+        aria-label={`View failure details for ${run.workflowName}`}
       >
         {!hideWorkflowName && (
           <div className="run-row__top">
@@ -92,7 +92,7 @@ function RunRow({
         )}
         <div className="run-row__bottom">
           <span className="run-row__error" title={run.error?.message}>
-            {run.error?.message ?? 'Falha sem mensagem detalhada'}
+            {run.error?.message ?? 'Failure with no detailed message'}
           </span>
           <span className="run-row__time">{formatRelativeTime(run.startTime)}</span>
         </div>
@@ -124,8 +124,8 @@ function RunRow({
           type="button"
           className="run-row__action run-row__action--dismiss"
           onClick={handleDismiss}
-          aria-label={`Descartar run de ${run.workflowName}`}
-          title="Descartar"
+          aria-label={`Dismiss run for ${run.workflowName}`}
+          title="Dismiss"
         >
           ×
         </button>

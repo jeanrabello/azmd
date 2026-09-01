@@ -10,10 +10,10 @@ export default function Footer({ runCount }: FooterProps): React.JSX.Element {
   return (
     <footer className="app-footer">
       <span className="app-footer__count">
-        {runCount === 0 ? 'Nenhuma falha' : runCount === 1 ? '1 falha' : `${runCount} falhas`}
+        {runCount === 0 ? 'No failures' : runCount === 1 ? '1 failure' : `${runCount} failures`}
       </span>
       <button type="button" className="link-button" onClick={handleQuit}>
-        Sair
+        Quit
       </button>
     </footer>
   )

@@ -5,6 +5,9 @@ import {
   DEFAULT_SETTINGS,
   LOOKBACK_BOUNDS,
   POLL_INTERVAL_BOUNDS,
+  type AuthAccount,
+  type AuthConfig,
+  type AuthMode,
   type DataSourceMode,
   type Scope,
   type Settings,
@@ -18,8 +21,10 @@ import {
  * atual é ESM-only e adiciona atrito no bundle do main, e a necessidade aqui é
  * um JSON pequeno. Menos dependência, menos superfície.
  *
- * Só preferências passam por aqui. Nada sensível: tokens ficam com o Azure CLI
- * (hoje) ou no Keychain via safeStorage (fase 4). Ver plano, seção 9.
+ * Só preferências passam por aqui. Nada sensível: este arquivo é texto plano
+ * no disco do usuário. Token e `clientSecret` moram no Keychain, via
+ * safeStorage (ver main/auth/secret-store.ts) — de `AuthConfig` este JSON
+ * guarda apenas o booleano `hasClientSecret`, nunca o valor.
  */
 
 function settingsPath(): string {
@@ -62,6 +67,7 @@ export function sanitizeSettings(input: unknown, base: Settings = DEFAULT_SETTIN
     ),
     scope: sanitizeScope(raw['scope'], base.scope),
     watch: sanitizeWatch(raw['watch'], base.watch),
+    auth: sanitizeAuth(raw['auth'], base.auth),
     notificationsEnabled:
       typeof raw['notificationsEnabled'] === 'boolean'
         ? raw['notificationsEnabled']
@@ -70,6 +76,66 @@ export function sanitizeSettings(input: unknown, base: Settings = DEFAULT_SETTIN
       typeof raw['launchAtLogin'] === 'boolean' ? raw['launchAtLogin'] : base.launchAtLogin,
     ...(tenantId ? { tenantId } : {}),
   }
+}
+
+const AUTH_MODES: readonly AuthMode[] = ['deviceCode', 'servicePrincipal', 'azureCli']
+
+/** Só o que for string não-vazia interessa; '' equivale a ausente. */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Valida o bloco `auth`.
+ *
+ * Duas coisas aqui não são simetria com os outros sanitizers, e são de
+ * propósito:
+ *
+ *  1. `hasClientSecret` NÃO vem do input. Quem sabe se existe um secret é o
+ *     Keychain (`SecretStore`), não este JSON — que pode estar desatualizado
+ *     por ter sido editado à mão, copiado de outra máquina, ou restaurado de
+ *     backup enquanto o Keychain ficou para trás. Preservamos o valor do
+ *     `base`, que o AppController recalcula a partir do store a cada escrita.
+ *
+ *  2. Um `clientSecret` que apareça no input é descartado em silêncio. É o
+ *     ponto de segurança central deste arquivo: settings.json é texto plano, e
+ *     um secret que entrasse aqui — por patch malformado do renderer ou por
+ *     alguém colando à mão — ficaria gravado em claro no disco. Descartar sem
+ *     erro é intencional: gritar sobre o campo tenderia a ecoar o valor em log.
+ *
+ * `auth` ausente cai inteiro no `base` (que na leitura de disco é
+ * `DEFAULT_AUTH_CONFIG`), o que faz um settings.json legado, gravado antes de
+ * existir autenticação configurável, continuar carregando sem erro.
+ */
+export function sanitizeAuth(input: unknown, base: AuthConfig): AuthConfig {
+  if (typeof input !== 'object' || input === null) return base
+  const raw = input as Record<string, unknown>
+
+  const mode = AUTH_MODES.find((candidate) => candidate === raw['mode']) ?? base.mode
+  const tenantId = nonEmptyString(raw['tenantId']) ?? base.tenantId
+  const clientId = nonEmptyString(raw['clientId']) ?? base.clientId
+  const account = sanitizeAuthAccount(raw['account']) ?? base.account
+
+  return {
+    mode,
+    hasClientSecret: base.hasClientSecret,
+    ...(tenantId ? { tenantId } : {}),
+    ...(clientId ? { clientId } : {}),
+    ...(account ? { account } : {}),
+  }
+}
+
+/**
+ * A conta só é útil se identificar quem entrou e onde: metade dela seria
+ * pior que nada, porque a UI mostraria "conectado" sem saber como quem.
+ */
+function sanitizeAuthAccount(input: unknown): AuthAccount | undefined {
+  if (typeof input !== 'object' || input === null) return undefined
+  const raw = input as Record<string, unknown>
+  const username = nonEmptyString(raw['username'])
+  const tenantId = nonEmptyString(raw['tenantId'])
+  if (!username || !tenantId) return undefined
+  return { username, tenantId }
 }
 
 function sanitizeWatch(input: unknown, base: WatchSelection): WatchSelection {
@@ -111,6 +177,24 @@ export class SettingsStore {
 
   update(patch: Partial<Settings>): Settings {
     const merged = sanitizeSettings({ ...this.get(), ...patch }, this.get())
+    this.#cached = merged
+    this.#writeToDisk(merged)
+    return merged
+  }
+
+  /**
+   * Grava `auth` por inteiro, sem passar pelo merge com o valor anterior.
+   *
+   * Existe separado de `update({ auth })` porque `sanitizeAuth` é escrito para
+   * entrada não-confiável e, nesse papel, herda do base tudo que o input não
+   * traz: `hasClientSecret` sempre, e os campos opcionais quando ausentes. Isso
+   * é o certo lendo disco ou patch do renderer, e é justamente o errado aqui —
+   * quem chama é o AppController, que já sanitizou o patch, já consultou o
+   * Keychain e precisa poder *apagar* um clientId ou desmarcar
+   * `hasClientSecret`. Herdar o valor antigo faria "limpar" virar no-op.
+   */
+  updateAuth(auth: AuthConfig): Settings {
+    const merged: Settings = { ...this.get(), auth }
     this.#cached = merged
     this.#writeToDisk(merged)
     return merged

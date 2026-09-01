@@ -3,9 +3,16 @@ import { join } from 'node:path'
 import { AppController } from './app-controller.js'
 import { Notifier } from './notifier.js'
 import { TrayController } from './tray.js'
-import { openPortalUrl } from './safe-open.js'
+import { openDeviceLoginUrl, openPortalUrl } from './safe-open.js'
 import { ensureCliPath } from './auth/shell-path.js'
-import { IPC, type AppState, type Settings } from '../shared/types.js'
+import { SettingsStore } from './settings-store.js'
+import {
+  IPC,
+  type AppState,
+  type AuthConfigPatch,
+  type AuthFlowState,
+  type Settings,
+} from '../shared/types.js'
 
 /**
  * Bootstrap do main process.
@@ -49,6 +56,37 @@ function syncLoginItem(desired: boolean): void {
   }
 }
 
+/**
+ * Conserta o PATH para o modo Azure CLI, e só para ele.
+ *
+ * Aberto pela GUI, o app recebe só /usr/bin:/bin:/usr/sbin:/sbin — sem
+ * /opt/homebrew/bin, onde o `az` costuma estar. Sem este reparo o modo CLI
+ * falha com "Azure CLI could not be found" mesmo com `az login` feito.
+ *
+ * Condicional ao modo porque em Device Code e Service Principal o `az` é
+ * irrelevante: avisar que ele falta seria apontar para um problema que o
+ * usuário não tem e desviar do real. Idempotente por desenho (ver
+ * auth/shell-path.ts), então chamar de novo quando o modo muda é seguro.
+ */
+async function ensureCliPathForMode(mode: Settings['auth']['mode']): Promise<void> {
+  if (mode !== 'azureCli') return
+
+  const cliPath = await ensureCliPath()
+  if (!cliPath.azFound) {
+    console.warn(
+      '[azmd] `az` não encontrado no PATH. O modo Azure CLI vai falhar até que a ' +
+        'Azure CLI esteja instalada e autenticada (`az login`).',
+    )
+  }
+}
+
+function broadcastAuthFlow(state: AuthFlowState): void {
+  const contents = tray?.window?.webContents
+  if (contents && !contents.isDestroyed() && !contents.isLoading()) {
+    contents.send(IPC.authFlowChanged, state)
+  }
+}
+
 function broadcastState(state: AppState): void {
   tray?.updateFromState(state)
   const contents = tray?.window?.webContents
@@ -70,6 +108,8 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
     notifier?.setEnabled(updated.notificationsEnabled)
     return updated
   })
+
+  ipcMain.handle(IPC.testNotification, () => notifier?.notifyTest() ?? false)
 
   ipcMain.handle(IPC.openRunInPortal, async (_event, runId: string) => {
     const run = ctrl.findRun(runId)
@@ -115,6 +155,32 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
     ctrl.dismissAll()
   })
 
+  ipcMain.handle(IPC.updateAuthConfig, async (_event, patch: AuthConfigPatch) => {
+    const auth = ctrl.updateAuthConfig(patch)
+    // Trocar PARA o modo CLI em runtime precisa do mesmo reparo de PATH que o
+    // boot faz — sem isto, quem muda de Device Code para CLI sem reiniciar cai
+    // no "az não encontrado" que o reparo existe justamente para evitar.
+    await ensureCliPathForMode(auth.mode)
+    return auth
+  })
+
+  ipcMain.handle(IPC.authSignIn, () => ctrl.signIn())
+
+  ipcMain.handle(IPC.authSignOut, () => ctrl.signOut())
+
+  /*
+   * Abre a página onde o usuário digita o código do device flow.
+   *
+   * Separado dos handlers de portal porque a validação é outra — ver
+   * DEVICE_LOGIN_ALLOWED_HOSTS em portal-url.ts. A URL vem do
+   * `@azure/identity` e atravessa o renderer, que não pode abrir URL externa
+   * por conta própria; por isso ela é revalidada aqui, do lado de cá da ponte,
+   * e não onde foi exibida.
+   */
+  ipcMain.handle(IPC.openDeviceLoginUrl, async (_event, url: string) => {
+    await openDeviceLoginUrl(url)
+  })
+
   ipcMain.handle(IPC.quit, () => {
     trayCtrl.window?.hide()
     app.quit()
@@ -123,19 +189,14 @@ function registerIpc(ctrl: AppController, trayCtrl: TrayController): void {
 
 void app.whenReady().then(async () => {
   /*
-   * Conserta o PATH antes de qualquer credencial existir.
+   * O reparo de PATH vem antes de qualquer credencial existir, porque é o
+   * `createAzureCredential` do controller que vai procurar o `az`.
    *
-   * Aberto pela GUI, o app recebe só /usr/bin:/bin:/usr/sbin:/sbin — sem
-   * /opt/homebrew/bin, onde o `az` costuma estar. Sem isto, o modo Azure
-   * falha com "Azure CLI could not be found" mesmo com `az login` feito.
+   * Lemos as settings por um store próprio em vez de esperar o controller:
+   * inverter a ordem faria a credencial ser montada com o PATH ainda enxuto.
+   * É uma leitura de arquivo pequena, feita uma vez no boot.
    */
-  const cliPath = await ensureCliPath()
-  if (!cliPath.azFound) {
-    console.warn(
-      '[azmd] `az` não encontrado no PATH. O modo Azure vai falhar até que a ' +
-        'Azure CLI esteja instalada e autenticada (`az login`).',
-    )
-  }
+  await ensureCliPathForMode(new SettingsStore().get().auth.mode)
 
   // Agente de menu bar: sem ícone no Dock. O Info.plist também traz
   // LSUIElement, mas isto cobre o `npm run dev`, que roda sem o plist.
@@ -161,6 +222,7 @@ void app.whenReady().then(async () => {
   controller = new AppController({
     onStateChanged: broadcastState,
     onNewFailures: (runs) => notifier?.notifyFailures(runs),
+    onAuthFlowChanged: broadcastAuthFlow,
   })
 
   notifier.setEnabled(controller.getSettings().notificationsEnabled)
